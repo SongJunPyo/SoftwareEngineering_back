@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 import os
 
 # .env 로드
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
+# load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
+load_dotenv()
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
 if SQLALCHEMY_DATABASE_URL is None:
@@ -48,3 +49,5 @@ def check_db_connection():
 
 if __name__ == "__main__":
     check_db_connection()
+    print("BASE DIR:", os.path.dirname(os.path.dirname(__file__)))
+print("DATABASE_URL =", SQLALCHEMY_DATABASE_URL)
