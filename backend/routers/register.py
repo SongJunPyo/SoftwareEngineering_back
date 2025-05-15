@@ -24,10 +24,17 @@ async def register_account(
     db: Session = Depends(get_db)
 ):
     try:
+<<<<<<< HEAD
         existing_user = db.scalar(
             select(User).where(User.email == account_data.email)
         )
         if existing_user:
+=======
+        existing_account = db.scalar(
+            select(User).where(User.email == account_data.email)
+        )
+        if existing_account:
+>>>>>>> main
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="이미 등록된 이메일 주소입니다."
