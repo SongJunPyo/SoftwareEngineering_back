@@ -4,15 +4,11 @@ from dotenv import load_dotenv
 import os
 
 # .env 로드
-<<<<<<< Updated upstream
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
-=======
 # load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 # load_dotenv()
 # 현재 경로 기준으로 상위 두 디렉토리 위에 있는 .env를 명시적으로 로드
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
 load_dotenv(dotenv_path=env_path)
->>>>>>> Stashed changes
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 # SQLALCHEMY_DATABASE_URL = "postgresql+psycopg://users:ibdp@10.100.54.176:5432/software"
 
@@ -62,10 +58,6 @@ def check_db_connection():
         raise
 
 if __name__ == "__main__":
-<<<<<<< Updated upstream
-    check_db_connection()
-=======
     check_db_connection()
     print("BASE DIR:", os.path.dirname(os.path.dirname(__file__)))
     print("DATABASE_URL =", SQLALCHEMY_DATABASE_URL)
->>>>>>> Stashed changes
