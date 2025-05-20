@@ -1,43 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from schemas.LojginSignUP import RegisterRequest
-from models.user import User
-from database.base import get_db
-import bcrypt
-
-router = APIRouter(prefix="/api/v1")
-
-@router.post("/register", status_code=201)
-def register_user(register_data: RegisterRequest, db: Session = Depends(get_db)):
-    # 1. 이메일 중복 확인
-    existing_user = db.query(User).filter(User.email == register_data.email).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="이미 사용 중인 이메일입니다."
-        )
-
-    # 2. 비밀번호 해싱
-    hashed_pw = bcrypt.hashpw(
-        register_data.password.encode("utf-8"),
-        bcrypt.gensalt()
-    ).decode("utf-8")
-
-    # 3. 사용자 생성
-    new_user = User(
-        email=register_data.email,
-        password=hashed_pw,
-        name=register_data.name,
-    )
-
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-
-    return {"message": "회원가입 성공", "user_id": new_user.user_id}
-
 # from fastapi import APIRouter, Depends, HTTPException, status
-# from schemas.register import AccountCreate
+# from schemas.LojginSignUP import AccountCreate, LoginRequest
 # from sqlalchemy import select
 # from sqlalchemy.orm import Session
 # from database.base import get_db
@@ -104,3 +66,42 @@ def register_user(register_data: RegisterRequest, db: Session = Depends(get_db))
 #         db.rollback()
 #         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.")
 
+
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from backend.schemas.LojginSignUP import RegisterRequest
+from backend.models.user import User
+from backend.database.base import get_db
+import bcrypt
+
+router = APIRouter(prefix="/api/v1")
+
+@router.post("/register", status_code=201)
+def register_user(register_data: RegisterRequest, db: Session = Depends(get_db)):
+    # 1. 이메일 중복 확인
+    existing_user = db.query(User).filter(User.email == register_data.email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="이미 사용 중인 이메일입니다."
+        )
+
+    # 2. 비밀번호 해싱
+    hashed_pw = bcrypt.hashpw(
+        register_data.password.encode("utf-8"),
+        bcrypt.gensalt()
+    ).decode("utf-8")
+
+    # 3. 사용자 생성
+    new_user = User(
+        email=register_data.email,
+        password=hashed_pw,
+        name=register_data.name,
+    )
+
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    return {"message": "회원가입 성공", "user_id": new_user.user_id}

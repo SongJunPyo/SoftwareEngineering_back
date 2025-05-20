@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, Text, DateTime, ForeignKey
-from database.base import Base
+from backend.database.base import Base
 
 
 class Task(Base):

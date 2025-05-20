@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, Text, DateTime, Boolean, ForeignKey
-from database.base import Base
+from backend.database.base import Base
 
 class Project(Base):
     __tablename__ = "projects"
