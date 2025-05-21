@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from backend.database.base import get_db
-from backend.schemas.LojginSignUP import RegisterRequest
+from backend.schemas.LojginSignUP import LoginRequest
 from backend.models.user import User
 import bcrypt
 
 router = APIRouter(prefix="/api/v1")
 
 @router.post("/login")
-def login(request: RegisterRequest, db: Session = Depends(get_db)):
+def login(request: LoginRequest, db: Session = Depends(get_db)):
     # 사용자 조회
     user = db.query(User).filter(User.email == request.email).first()
 
