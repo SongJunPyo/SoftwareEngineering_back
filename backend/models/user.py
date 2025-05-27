@@ -9,6 +9,7 @@ class User(Base):
     email = Column(String, unique=True, nullable=False)
     password = Column(String, nullable=False)
     name = Column(String, nullable=False)
+    provider = Column(String, nullable=False, default="local")
     role = Column(Integer, nullable=False, default=3)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

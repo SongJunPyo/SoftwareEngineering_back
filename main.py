@@ -1,21 +1,20 @@
 from fastapi import FastAPI
-<<<<<<< HEAD
+from backend.database.base import check_db_connection
 from fastapi.middleware.cors import CORSMiddleware
+from backend.routers import register, login  # 실제 경로에 따라 다를 수 있음
 
+check_db_connection()
 
 app = FastAPI()
-# 👇 CORS 설정 추가
+
+# CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # 프론트엔드 도메인
-# 나머지 API 라우터 등 추가
-@app.get("/")
-def read_root():
-    return {"message": "Hello from FastAPI"}
-
-@app.post("/api/auth/google")
-def google_auth(data: dict):
-    return {"message": "Google login received", "data": data}
+    allow_origins=["*"],  # 필요에 따라 출처 제한 가능
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # 라우터 등록
