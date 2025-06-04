@@ -1,7 +1,17 @@
 """
 DEPRECATED: 이 파일은 더 이상 사용되지 않습니다.
 새로운 기능별로 분리된 라우터들을 사용해주세요.
+
+마이그레이션 가이드:
+- 회원가입: POST /api/v1/auth/register
+- 로그인: POST /api/v1/auth/login  
+- 카카오 로그인: POST /api/v1/oauth/kakao
+- 네이버 로그인: POST /api/v1/oauth/naver
+- 구글 로그인: POST /api/v1/oauth/google
 """
+
+# 모든 기존 코드는 주석 처리됨
+# 실제 기능은 새로운 라우터들에서 제공됩니다.
 
 # 기존 코드는 주석 처리됨
 # from fastapi import APIRouter, Depends, HTTPException, status
