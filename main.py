@@ -1,12 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-<<<<<<< Updated upstream
 from backend.routers import register, login  # 실제 경로에 따라 다를 수 있음
-=======
 from backend.routers import auth, oauth, workspace, project, project_order
 from backend.database.base import engine
 from backend.models import user, workspace as workspace_model, project as project_model
->>>>>>> Stashed changes
 
 # 데이터베이스 테이블 생성
 user.Base.metadata.create_all(bind=engine)
@@ -29,16 +26,11 @@ app.add_middleware(
 )
 
 # 라우터 등록
-<<<<<<< Updated upstream
-app.include_router(register.router)
-app.include_router(login.router)
-=======
 app.include_router(auth.router)          # 인증 관련 (회원가입, 로그인, 토큰 갱신)
 app.include_router(oauth.router)         # OAuth 로그인 (카카오, 네이버, 구글)
 app.include_router(workspace.router)     # 워크스페이스 CRUD
 app.include_router(project.router)       # 프로젝트 CRUD
 app.include_router(project_order.router) # 기존 프로젝트 주문 관련
->>>>>>> Stashed changes
 
 @app.get("/")
 def read_root():
