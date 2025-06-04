@@ -13,7 +13,14 @@ class Task(Base):
     description = Column(Text)
     assignee_id = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"))
     priority = Column(Text, nullable=False, default="medium")
-    due_date = Column(DateTime)
+    start_date = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    due_date = Column(DateTime,  nullable=False, default=lambda: datetime.now(timezone.utc))
     status = Column(Text, nullable=False, default="todo")
-    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+class TaskMember(Base):
+    __tablename__ = "task_members"
+
+    task_id = Column(Integer, ForeignKey("tasks.task_id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), primary_key=True)
+    assigned_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
