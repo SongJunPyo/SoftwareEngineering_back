@@ -13,7 +13,6 @@ class Project(Base):
     owner_id = Column(Integer, ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
-    order = Column(Integer, nullable=False, default=0)
 
 class ProjectMember(Base):
     __tablename__ = "project_members"
