@@ -1,3 +1,9 @@
+"""
+DEPRECATED: 이 파일은 더 이상 사용되지 않습니다.
+새로운 기능별로 분리된 라우터들을 사용해주세요.
+"""
+
+# 기존 코드는 주석 처리됨
 # from fastapi import APIRouter, Depends, HTTPException, status
 # from schemas.LojginSignUP import AccountCreate, LoginRequest
 # from sqlalchemy import select

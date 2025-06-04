@@ -1,35 +1,62 @@
 from fastapi import FastAPI
-from backend.database.base import check_db_connection
 from fastapi.middleware.cors import CORSMiddleware
+<<<<<<< Updated upstream
 from backend.routers import register, login  # 실제 경로에 따라 다를 수 있음
+=======
+from backend.routers import auth, oauth, workspace, project, project_order
+from backend.database.base import engine
+from backend.models import user, workspace as workspace_model, project as project_model
+>>>>>>> Stashed changes
 
-check_db_connection()
+# 데이터베이스 테이블 생성
+user.Base.metadata.create_all(bind=engine)
+workspace_model.Base.metadata.create_all(bind=engine)
+project_model.Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
+app = FastAPI(
+    title="Software Engineering Backend API",
+    description="소프트웨어 공학 백엔드 API - 정리된 구조",
+    version="2.0.0"
+)
 
 # CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 필요에 따라 출처 제한 가능
+    allow_origins=["http://localhost:3000"],  # 프론트엔드 주소
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
 # 라우터 등록
+<<<<<<< Updated upstream
 app.include_router(register.router)
 app.include_router(login.router)
+=======
+app.include_router(auth.router)          # 인증 관련 (회원가입, 로그인, 토큰 갱신)
+app.include_router(oauth.router)         # OAuth 로그인 (카카오, 네이버, 구글)
+app.include_router(workspace.router)     # 워크스페이스 CRUD
+app.include_router(project.router)       # 프로젝트 CRUD
+app.include_router(project_order.router) # 기존 프로젝트 주문 관련
+>>>>>>> Stashed changes
 
 @app.get("/")
-def root():
-    return {"message": "FastAPI server is running."}
+def read_root():
+    return {
+        "message": "Software Engineering Backend API v2.0",
+        "status": "구조화 완료",
+        "features": [
+            "JWT 기반 인증/인가",
+            "기능별 분리된 라우터",
+            "OAuth 로그인 지원",
+            "워크스페이스 및 프로젝트 관리"
+        ]
+    }
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        app,
-        host="0.0.0.0",  # 모든 IP에서 접근 허용
-        port=8005,
-        log_level="debug"
-    )
+    uvicorn.run(app, host="0.0.0.0", port=8005) 
