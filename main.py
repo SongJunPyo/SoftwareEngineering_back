@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.routers import auth, oauth, workspace, project, project_order
 from backend.database.base import engine, check_db_connection
 from backend.models import user, workspace as workspace_model, project as project_model
+from backend.config.settings import ALLOWED_ORIGINS
 
 # 데이터베이스 연결 확인
 check_db_connection()
@@ -18,21 +19,21 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# CORS 설정 (개발 환경용 - 모든 Origin 허용)
+# CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 모든 Origin 허용 (개발 환경용)
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],  # 모든 HTTP 메서드 허용
-    allow_headers=["*"],  # 모든 헤더 허용
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# 라우터 등록 (새로운 구조)
-app.include_router(auth.router)          # 인증 관련 (회원가입, 로그인, 토큰 갱신)
-app.include_router(oauth.router)         # OAuth 로그인 (카카오, 네이버, 구글)
-app.include_router(workspace.router)     # 워크스페이스 CRUD
-app.include_router(project.router)       # 프로젝트 CRUD
-app.include_router(project_order.router) # 프로젝트 순서 관리
+# 라우터 등록
+app.include_router(auth.router)
+app.include_router(oauth.router)
+app.include_router(workspace.router)
+app.include_router(project.router)
+app.include_router(project_order.router)
 
 @app.get("/")
 def read_root():
@@ -45,22 +46,18 @@ def read_root():
             "OAuth 로그인 지원",
             "워크스페이스 및 프로젝트 관리"
         ],
-        "deprecated_files": [
-            "backend/routers/register.py - 사용 중단",
-            "backend/routers/login.py - 사용 중단"
-        ],
-        "cors_status": "모든 Origin 허용 (개발 환경)"
+        "cors_status": f"허용된 Origin: {ALLOWED_ORIGINS}"
     }
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "cors": "permissive"}
+    return {"status": "healthy", "cors": "configured"}
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         app, 
         host="0.0.0.0", 
-        port=8005,
-        log_level="debug"
+        port=8000,
+        log_level="info"
     ) 
