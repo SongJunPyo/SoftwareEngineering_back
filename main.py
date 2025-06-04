@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routers import register, login  # 실제 경로에 따라 다를 수 있음
 from backend.routers import auth, oauth, workspace, project, project_order
 from backend.database.base import engine
 from backend.models import user, workspace as workspace_model, project as project_model
