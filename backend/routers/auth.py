@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from backend.schemas.LojginSignUP import RegisterRequest, LoginRequest
 from backend.models.user import User
+from backend.models.workspace import Workspace
 from backend.database.base import get_db
 from backend.utils.jwt_utils import create_access_token, create_refresh_token, refresh_access_token
 from backend.middleware.auth import verify_refresh_token
@@ -43,6 +44,16 @@ def register_user(register_data: RegisterRequest, db: Session = Depends(get_db))
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    # 기본 워크스페이스 생성 (order=1)
+    default_workspace = Workspace(
+        user_id=new_user.user_id,
+        name="기본 워크스페이스",
+        order=1
+    )
+    
+    db.add(default_workspace)
+    db.commit()
 
     return {
         "message": "회원가입 성공", 

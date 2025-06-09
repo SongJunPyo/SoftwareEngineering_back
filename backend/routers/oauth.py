@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from backend.models.user import User
+from backend.models.workspace import Workspace
 from backend.database.base import get_db
 from backend.utils.jwt_utils import create_access_token, create_refresh_token
 from backend.config.settings import KAKAO_CLIENT_ID, KAKAO_REDIRECT_URI, NAVER_CLIENT_ID, NAVER_CLIENT_SECRET
@@ -118,6 +119,16 @@ def kakao_register(data: dict, db: Session = Depends(get_db)):
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    
+    # 기본 워크스페이스 생성 (order=1)
+    default_workspace = Workspace(
+        user_id=new_user.user_id,
+        name="기본 워크스페이스",
+        order=1
+    )
+    
+    db.add(default_workspace)
+    db.commit()
     
     # JWT 토큰 생성
     token_data = {"sub": str(new_user.user_id), "email": new_user.email}
@@ -244,6 +255,17 @@ def google_oauth(data: dict, db: Session = Depends(get_db)):
             db.add(new_user)
             db.commit()
             db.refresh(new_user)
+            
+            # 기본 워크스페이스 생성 (order=1)
+            default_workspace = Workspace(
+                user_id=new_user.user_id,
+                name="기본 워크스페이스",
+                order=1
+            )
+            
+            db.add(default_workspace)
+            db.commit()
+            
             user = new_user
         elif getattr(user, "provider", "local") != "google":
             raise HTTPException(
@@ -305,6 +327,16 @@ def google_register(data: dict, db: Session = Depends(get_db)):
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    
+    # 기본 워크스페이스 생성 (order=1)
+    default_workspace = Workspace(
+        user_id=new_user.user_id,
+        name="기본 워크스페이스",
+        order=1
+    )
+    
+    db.add(default_workspace)
+    db.commit()
 
     # JWT 토큰 생성
     token_data = {"sub": str(new_user.user_id), "email": new_user.email}

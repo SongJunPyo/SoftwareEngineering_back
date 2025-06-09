@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routers import auth, oauth, workspace, project, project_order
+from backend.routers import auth, oauth, workspace, project, project_order, notifications, project_members, workspace_project_order, user_setting
 from backend.database.base import engine, check_db_connection
-from backend.models import user, workspace as workspace_model, project as project_model
+from backend.models import user, workspace as workspace_model, project as project_model, project_invitation, logs_notification, workspace_project_order as wpo_model, user_setting as user_setting_model, tag
 
 # 데이터베이스 연결 확인
 check_db_connection()
@@ -11,6 +11,11 @@ check_db_connection()
 user.Base.metadata.create_all(bind=engine)
 workspace_model.Base.metadata.create_all(bind=engine)
 project_model.Base.metadata.create_all(bind=engine)
+project_invitation.Base.metadata.create_all(bind=engine)
+logs_notification.Base.metadata.create_all(bind=engine)
+wpo_model.Base.metadata.create_all(bind=engine)
+user_setting_model.Base.metadata.create_all(bind=engine)
+tag.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Software Engineering Backend API",
@@ -33,6 +38,10 @@ app.include_router(oauth.router)         # OAuth 로그인 (카카오, 네이버
 app.include_router(workspace.router)     # 워크스페이스 CRUD
 app.include_router(project.router)       # 프로젝트 CRUD
 app.include_router(project_order.router) # 프로젝트 순서 관리
+app.include_router(workspace_project_order.router) # 워크스페이스-프로젝트 관계 관리
+app.include_router(user_setting.router)  # 사용자 설정 관리
+app.include_router(notifications.router) # 알림 관리
+app.include_router(project_members.router) # 프로젝트 멤버 초대 및 관리
 
 @app.get("/")
 def read_root():
@@ -43,7 +52,9 @@ def read_root():
             "JWT 기반 인증/인가",
             "기능별 분리된 라우터",
             "OAuth 로그인 지원",
-            "워크스페이스 및 프로젝트 관리"
+            "워크스페이스 및 프로젝트 관리",
+            "프로젝트 멤버 초대 시스템",
+            "알림 관리 시스템"
         ],
         "deprecated_files": [
             "backend/routers/register.py - 사용 중단",
