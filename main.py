@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routers import auth, oauth, workspace, project, project_order, notifications, project_members, workspace_project_order, user_setting
+from backend.routers import auth, oauth, workspace, project, project_order, notifications, project_members, workspace_project_order, user_setting, task
 from backend.database.base import engine, check_db_connection
-from backend.models import user, workspace as workspace_model, project as project_model, project_invitation, logs_notification, workspace_project_order as wpo_model, user_setting as user_setting_model, tag
+from backend.models import user, workspace as workspace_model, project as project_model, project_invitation, logs_notification, workspace_project_order as wpo_model, user_setting as user_setting_model, tag, task as task_model
 
 # 데이터베이스 연결 확인
 check_db_connection()
@@ -16,6 +16,7 @@ logs_notification.Base.metadata.create_all(bind=engine)
 wpo_model.Base.metadata.create_all(bind=engine)
 user_setting_model.Base.metadata.create_all(bind=engine)
 tag.Base.metadata.create_all(bind=engine)
+task_model.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Software Engineering Backend API",
@@ -42,6 +43,7 @@ app.include_router(workspace_project_order.router) # 워크스페이스-프로�
 app.include_router(user_setting.router)  # 사용자 설정 관리
 app.include_router(notifications.router) # 알림 관리
 app.include_router(project_members.router) # 프로젝트 멤버 초대 및 관리
+app.include_router(task.router)          # 업무(Task) CRUD
 
 @app.get("/")
 def read_root():
