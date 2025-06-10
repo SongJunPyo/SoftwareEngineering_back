@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, Text, DateTime, ForeignKey
+from datetime import datetime, timezone, date
+from sqlalchemy import Column, Integer, Text, DateTime, ForeignKey, Date
 from sqlalchemy.orm import relationship
 from backend.database.base import Base
 
@@ -14,8 +14,8 @@ class Task(Base):
     description = Column(Text)
     assignee_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     priority = Column(Text, nullable=False, default="medium")
-    start_date = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
-    due_date = Column(DateTime,  nullable=False, default=lambda: datetime.now(timezone.utc))
+    start_date = Column(Date, nullable=False, default=lambda: date.today())
+    due_date = Column(Date, nullable=False, default=lambda: date.today())
     status = Column(Text, nullable=False, default="todo")
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
