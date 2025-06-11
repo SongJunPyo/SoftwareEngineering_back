@@ -4,7 +4,7 @@ from datetime import datetime
 
 class TaskCreateRequest(BaseModel):
     title: str
-    assignee_id: int
+    assignee_id: Optional[int] = None  # 담당자 ID, 선택적
     parent_task_id: Optional[int] = None
     priority: str               # "low"|"medium"|"high"
     start_date: datetime
@@ -19,7 +19,7 @@ class TaskResponse(BaseModel):
     project_id: int
     parent_task_id: Optional[int]
     title: str
-    assignee_id: int
+    assignee_id: Optional[int] = None  # 담당자 ID, 선택적
     priority: str
     start_date: datetime
     due_date: datetime
