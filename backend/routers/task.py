@@ -122,6 +122,23 @@ def read_tasks(
       for task in tasks
     ]
 
+# # 1) 단일 Task 조회 엔드포인트
+# @router.get(
+#     "/tasks/{task_id}",
+#     response_model=TaskResponse,
+#     status_code=status.HTTP_200_OK
+# )
+# def read_task(
+#     task_id: int,
+#     db: Session = Depends(get_db),
+#     current_user = Depends(verify_token),
+# ):
+#     task = db.query(TaskModel).filter(TaskModel.task_id == task_id).first()
+#     if not task:
+#         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+#     # assignee_name이 TaskResponse 스키마에 포함돼 있다면, Task 모델에 relationship이 있어야 함
+#     return task
 # 1) 단일 Task 조회 엔드포인트
 @router.get(
     "/tasks/{task_id}",
@@ -139,6 +156,7 @@ def read_task(
 
     # assignee_name이 TaskResponse 스키마에 포함돼 있다면, Task 모델에 relationship이 있어야 함
     return task
+
 
 # 2) Task description 업데이트 엔드포인트
 @router.patch(
