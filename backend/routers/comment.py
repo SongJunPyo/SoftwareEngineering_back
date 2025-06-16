@@ -6,6 +6,10 @@ from pydantic import BaseModel
 from typing import List
 from datetime import datetime, timezone
 from backend.middleware.auth import verify_token
+from backend.models.task import Task
+from backend.routers.notifications import create_notification
+from backend.models.logs_notification import ActivityLog
+
 
 router = APIRouter(
     prefix="/comments",
@@ -30,7 +34,7 @@ class CommentUpdate(BaseModel):
     content: str
 
 @router.post("/", response_model=CommentOut)
-def create_comment(comment: CommentCreate, db: Session = Depends(get_db), current_user = Depends(verify_token)):
+async def create_comment(comment: CommentCreate, db: Session = Depends(get_db), current_user = Depends(verify_token)):
     db_comment = Comment(
         task_id=comment.task_id,
         user_id=current_user.user_id,
@@ -41,6 +45,31 @@ def create_comment(comment: CommentCreate, db: Session = Depends(get_db), curren
     db.add(db_comment)
     db.commit()
     db.refresh(db_comment)
+
+    # ActivityLog에 기록 추가
+    task = db.query(Task).filter(Task.task_id == comment.task_id).first()
+    if task:
+        log = ActivityLog(
+            user_id=current_user.user_id,
+            entity_type="comment",
+            entity_id=db_comment.comment_id,
+            action="create",
+            project_id=task.project_id
+        )
+        db.add(log)
+        db.commit()
+
+    # 태스크 담당자에게 알림 생성
+    if task and task.assignee_id != current_user.user_id:  # 담당자가 댓글 작성자가 아닌 경우에만
+        await create_notification(
+            db=db,
+            user_id=task.assignee_id,
+            type="comment",
+            message=f"{current_user.name}님이 태스크에 댓글을 남겼습니다.",
+            channel="task",
+            related_id=task.task_id
+        )
+
     return db_comment
 
 @router.get("/task/{task_id}", response_model=List[CommentOut])

@@ -3,7 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.routers import auth, oauth, workspace, project, project_order, notifications, project_members, workspace_project_order, user_setting, task, task_project_member, comment
 from backend.database.base import engine, check_db_connection
 from backend.models import user, workspace as workspace_model, project as project_model, project_invitation, logs_notification, workspace_project_order as wpo_model, user_setting as user_setting_model, tag, task as task_model
-
+from backend.routers import deadline_notification
+from backend.routers import logs
 # 데이터베이스 연결 확인
 check_db_connection()
 
@@ -46,6 +47,7 @@ app.include_router(project_members.router) # 프로젝트 멤버 초대 및 관�
 app.include_router(task.router)          # 업무(Task) CRUD
 app.include_router(task_project_member.router) # 프로젝트 멤버 관리
 app.include_router(comment.router)        # 댓글 관리
+app.include_router(logs.router)
 
 @app.get("/")
 def read_root():

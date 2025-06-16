@@ -9,6 +9,7 @@ from backend.models.task import Task as TaskModel
 from backend.models.task import TaskMember
 from backend.models.project import Project
 from backend.schemas.Task import TaskCreateRequest, TaskResponse
+from backend.models.logs_notification import ActivityLog
 
 router = APIRouter(prefix="/api/v1")
 
@@ -91,7 +92,18 @@ def create_task(
     db.commit()
     db.refresh(task)
 
-    # 4) task_members 테이블에 매핑 추가 (project_id, user_id, assigned_at)
+    # 4) ActivityLog에 기록 추가
+    log = ActivityLog(
+        user_id=current_user.user_id,
+        entity_type="task",
+        entity_id=task.task_id,
+        action="create",
+        project_id=task.project_id
+    )
+    db.add(log)
+    db.commit()
+
+    # 5) task_members 테이블에 매핑 추가 (project_id, user_id, assigned_at)
     if task_in.assignee_id is not None:
         mapping = TaskMember(
             task_id     = task.task_id,
@@ -99,7 +111,7 @@ def create_task(
         )
         db.add(mapping)
     db.commit()
-    # 5) 생성된 Task 객체를 반환 (TaskOut 직렬화)
+    # 6) 생성된 Task 객체를 반환 (TaskOut 직렬화)
     return task
 
 @router.get("/tasks", response_model=List[TaskResponse])

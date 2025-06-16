@@ -12,7 +12,7 @@ class Task(Base):
     parent_task_id = Column(Integer, ForeignKey("tasks.task_id", ondelete="SET NULL"))
     title = Column(Text, nullable=False)
     description = Column(Text)
-    assignee_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"))
+    assignee_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"),nullable=False)
     priority = Column(Text, nullable=False, default="medium")
     start_date = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     due_date = Column(DateTime,  nullable=False, default=lambda: datetime.now(timezone.utc))

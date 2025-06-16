@@ -9,6 +9,26 @@ from backend.middleware.auth import verify_token
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
 
+async def create_notification(
+    db: Session,
+    user_id: int,
+    type: str,
+    message: str,
+    channel: str,
+    related_id: int = None
+):
+    notification = Notification(
+        user_id=user_id,
+        type=type,
+        message=message,
+        channel=channel,
+        is_read=False,
+        related_id=related_id
+    )
+    db.add(notification)
+    db.commit()
+    db.refresh(notification)
+    return notification
 
 @router.get("/")
 async def get_notifications(
@@ -26,7 +46,7 @@ async def get_notifications(
         .offset(offset)\
         .limit(per_page)\
         .all()
-
+    print(db.query(Notification).all())
     total = db.query(Notification)\
         .filter(Notification.user_id == current_user.user_id)\
         .count()
