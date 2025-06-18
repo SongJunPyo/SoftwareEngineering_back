@@ -1,14 +1,14 @@
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime, date
+from datetime import datetime
 
 class TaskCreateRequest(BaseModel):
     title: str
-    assignee_id: Optional[int] = None  # 담당자 ID, 선택적
+    assignee_id: int
     parent_task_id: Optional[int] = None
     priority: str               # "low"|"medium"|"high"
-    start_date: date
-    due_date: date
+    start_date: datetime
+    due_date: datetime
     project_id: int
 
     class Config:
@@ -19,10 +19,10 @@ class TaskResponse(BaseModel):
     project_id: int
     parent_task_id: Optional[int]
     title: str
-    assignee_id: Optional[int] = None  # 담당자 ID, 선택적
+    assignee_id: int
     priority: str
-    start_date: date
-    due_date: date
+    start_date: datetime
+    due_date: datetime
     status: str
     updated_at: Optional[datetime]
     description: Optional[str] = None  # 업무 설명

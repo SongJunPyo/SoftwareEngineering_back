@@ -37,6 +37,45 @@ def create_task(
         if not parent:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Parent task not found")
 
+    # # 3) tasks 테이블에 새 업무 저장 (assignee_id는 프론트에서 받은 값 사용)
+    # task = TaskModel(
+    #     title           = task_in.title,
+    #     project_id      = task_in.project_id,
+    #     parent_task_id  = task_in.parent_task_id,
+    #     start_date      = task_in.start_date,
+    #     due_date        = task_in.due_date,
+    #     priority        = task_in.priority,
+    #     assignee_id     = task_in.assignee_id,
+    # )
+    # db.add(task)
+    # db.commit()
+    # db.refresh(task)
+        # === status 자동 결정 ===
+    now = datetime.now(timezone.utc)
+    start_date = task_in.start_date
+    due_date = task_in.due_date
+
+    # start_date, due_date가 문자열이면 datetime으로 변환 (항상 UTC로)
+    def to_aware(dt):
+        if isinstance(dt, str):
+            d = datetime.fromisoformat(dt)
+        else:
+            d = dt
+        if d.tzinfo is None:
+            # 타임존 정보 없으면 UTC로 지정
+            d = d.replace(tzinfo=timezone.utc)
+        return d
+
+    start_date = to_aware(task_in.start_date)
+    due_date = to_aware(task_in.due_date)
+
+    if now < start_date:
+        status_value = "todo"
+    elif start_date <= now <= due_date:
+        status_value = "In progress"
+    else:
+        status_value = "complete"
+
     # 3) tasks 테이블에 새 업무 저장 (assignee_id는 프론트에서 받은 값 사용)
     task = TaskModel(
         title           = task_in.title,
@@ -46,6 +85,7 @@ def create_task(
         due_date        = task_in.due_date,
         priority        = task_in.priority,
         assignee_id     = task_in.assignee_id,
+        status          = status_value,  # status 필드 자동 설정
     )
     db.add(task)
     db.commit()
@@ -82,6 +122,23 @@ def read_tasks(
       for task in tasks
     ]
 
+# # 1) 단일 Task 조회 엔드포인트
+# @router.get(
+#     "/tasks/{task_id}",
+#     response_model=TaskResponse,
+#     status_code=status.HTTP_200_OK
+# )
+# def read_task(
+#     task_id: int,
+#     db: Session = Depends(get_db),
+#     current_user = Depends(verify_token),
+# ):
+#     task = db.query(TaskModel).filter(TaskModel.task_id == task_id).first()
+#     if not task:
+#         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+#     # assignee_name이 TaskResponse 스키마에 포함돼 있다면, Task 모델에 relationship이 있어야 함
+#     return task
 # 1) 단일 Task 조회 엔드포인트
 @router.get(
     "/tasks/{task_id}",
@@ -99,6 +156,7 @@ def read_task(
 
     # assignee_name이 TaskResponse 스키마에 포함돼 있다면, Task 모델에 relationship이 있어야 함
     return task
+
 
 # 2) Task description 업데이트 엔드포인트
 @router.patch(

@@ -49,7 +49,7 @@ def get_comments_by_task(task_id: int, db: Session = Depends(get_db)):
     return comments
 
 @router.patch("/{comment_id}", response_model=CommentOut)
-def update_comment(comment_id: int, comment: CommentUpdate, db: Session = Depends(get_db)):
+def update_comment(comment_id: int, comment: CommentUpdate, db: Session = Depends(get_db), current_user = Depends(verify_token)):
     db_comment = db.query(Comment).filter(Comment.comment_id == comment_id).first()
     if not db_comment:
         raise HTTPException(status_code=404, detail="댓글을 찾을 수 없습니다.")
@@ -61,7 +61,7 @@ def update_comment(comment_id: int, comment: CommentUpdate, db: Session = Depend
     return db_comment
 
 @router.delete("/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_comment(comment_id: int, db: Session = Depends(get_db)):
+def delete_comment(comment_id: int, db: Session = Depends(get_db), current_user = Depends(verify_token)):
     db_comment = db.query(Comment).filter(Comment.comment_id == comment_id).first()
     if not db_comment:
         raise HTTPException(status_code=404, detail="댓글을 찾을 수 없습니다.")
