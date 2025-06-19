@@ -7,18 +7,15 @@ CREATE TABLE IF NOT EXISTS public.activity_logs
 (
     log_id serial NOT NULL,
     user_id integer,
+    user_name text COLLATE pg_catalog."default",
     entity_type text COLLATE pg_catalog."default" NOT NULL,
     entity_id integer NOT NULL,
     action text COLLATE pg_catalog."default" NOT NULL,
-    "timestamp" timestamp without time zone NOT NULL DEFAULT now(),
     project_id integer,
+    project_name text COLLATE pg_catalog."default",
+    details text COLLATE pg_catalog."default",
+    "timestamp" timestamp with time zone NOT NULL DEFAULT now(),
     CONSTRAINT activity_logs_pkey PRIMARY KEY (log_id)
-);
-
-CREATE TABLE IF NOT EXISTS public.alembic_version
-(
-    version_num character varying(32) COLLATE pg_catalog."default" NOT NULL,
-    CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
 );
 
 CREATE TABLE IF NOT EXISTS public.comments
@@ -27,8 +24,8 @@ CREATE TABLE IF NOT EXISTS public.comments
     user_id integer,
     task_id integer NOT NULL,
     content text COLLATE pg_catalog."default" NOT NULL,
-    created_at timestamp without time zone NOT NULL DEFAULT now(),
     updated_at timestamp without time zone NOT NULL DEFAULT now(),
+    is_updated integer NOT NULL DEFAULT 0,
     CONSTRAINT comments_pkey PRIMARY KEY (comment_id)
 );
 
@@ -55,6 +52,7 @@ CREATE TABLE IF NOT EXISTS public.notifications
     channel text COLLATE pg_catalog."default" NOT NULL,
     is_read boolean NOT NULL DEFAULT false,
     created_at timestamp without time zone NOT NULL DEFAULT now(),
+    related_id integer,
     CONSTRAINT notifications_pkey PRIMARY KEY (notification_id)
 );
 
@@ -172,15 +170,15 @@ CREATE TABLE IF NOT EXISTS public.workspaces
 ALTER TABLE IF EXISTS public.activity_logs
     ADD CONSTRAINT activity_logs_project_id_fkey FOREIGN KEY (project_id)
     REFERENCES public.projects (project_id) MATCH SIMPLE
-    ON UPDATE NO ACTION
-    ON DELETE SET NULL;
+    ON UPDATE CASCADE
+    ON DELETE NO ACTION;
 
 
 ALTER TABLE IF EXISTS public.activity_logs
     ADD CONSTRAINT activity_logs_user_id_fkey FOREIGN KEY (user_id)
     REFERENCES public.users (user_id) MATCH SIMPLE
-    ON UPDATE NO ACTION
-    ON DELETE SET NULL;
+    ON UPDATE CASCADE
+    ON DELETE NO ACTION;
 
 
 ALTER TABLE IF EXISTS public.comments
@@ -314,7 +312,7 @@ ALTER TABLE IF EXISTS public.tasks
 
 
 ALTER TABLE IF EXISTS public.user_setting
-    ADD CONSTRAINT user_setting_user_fkey FOREIGN KEY (user_id)
+    ADD CONSTRAINT user_setting_user_id_fkey FOREIGN KEY (user_id)
     REFERENCES public.users (user_id) MATCH SIMPLE
     ON UPDATE NO ACTION
     ON DELETE CASCADE;

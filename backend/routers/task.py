@@ -9,7 +9,7 @@ from backend.middleware.auth import verify_token
 from backend.models.task import Task as TaskModel
 from backend.models.task import TaskMember
 from backend.models.project import Project, ProjectMember
-from backend.schemas.Task import TaskCreateRequest, TaskResponse
+from backend.schemas.Task import TaskCreateRequest, TaskUpdateRequest, TaskResponse
 
 router = APIRouter(prefix="/api/v1")
 
@@ -102,14 +102,20 @@ def read_tasks(
           .filter(TaskModel.project_id == project_id)
           .all()
     )
-    # assignee 관계를 통해 User.name 이 이미 로드되어 있으므로:
-    return [
-      TaskResponse(
-        **task.__dict__,              # TaskCreate 필드 + task_id, created_at 등
-        assignee_name=task.assignee.name if task.assignee else None
-      )
-      for task in tasks
-    ]
+    
+    result = []
+    for task in tasks:
+        # task_members 조회
+        task_members = db.query(TaskMember).filter(TaskMember.task_id == task.task_id).all()
+        member_ids = [tm.user_id for tm in task_members]
+        
+        result.append(TaskResponse(
+            **task.__dict__,
+            assignee_name=task.assignee.name if task.assignee else None,
+            member_ids=member_ids
+        ))
+    
+    return result
 
 # 1) 단일 Task 조회 엔드포인트
 @router.get(
@@ -126,11 +132,18 @@ def read_task(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
-    # assignee_name이 TaskResponse 스키마에 포함돼 있다면, Task 모델에 relationship이 있어야 함
-    return task
+    # task_members 조회
+    task_members = db.query(TaskMember).filter(TaskMember.task_id == task_id).all()
+    member_ids = [tm.user_id for tm in task_members]
+
+    return TaskResponse(
+        **task.__dict__,
+        assignee_name=task.assignee.name if task.assignee else None,
+        member_ids=member_ids
+    )
 
 
-# 2) Task 업데이트 엔드포인트 (description 외 다른 필드도 수정 가능)
+# 2) Task 업데이트 엔드포인트 (title, assignee, members, status 등 수정 가능)
 @router.patch(
     "/tasks/{task_id}",
     response_model=TaskResponse,
@@ -138,7 +151,7 @@ def read_task(
 )
 async def update_task(
     task_id: int,
-    payload: dict,  # {"description": "새로운 설명", "status": "complete", "priority": "high"} 등
+    task_update: TaskUpdateRequest,
     db: Session = Depends(get_db),
     current_user = Depends(verify_token),
 ):
@@ -146,44 +159,64 @@ async def update_task(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
-    # 권한 검증: Task의 담당자만 수정 가능
-    if task.assignee_id != current_user.user_id:
+    # 권한 검증: Task의 담당자 또는 프로젝트 멤버만 수정 가능
+    project_member = db.query(ProjectMember).filter(
+        ProjectMember.project_id == task.project_id,
+        ProjectMember.user_id == current_user.user_id
+    ).first()
+    
+    if task.assignee_id != current_user.user_id and not project_member:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
-            detail="해당 Task의 담당자만 수정할 수 있습니다"
+            detail="해당 Task의 담당자 또는 프로젝트 멤버만 수정할 수 있습니다"
         )
     
-    # 업데이트 가능한 필드들
-    updatable_fields = [
-        'title', 'description', 'status', 'priority', 
-        'start_date', 'due_date', 'assignee_id'
-    ]
-    
     updated = False
-    for field in updatable_fields:
-        if field in payload:
-            new_value = payload[field]
-            if field in ['start_date', 'due_date'] and new_value:
-                # 날짜 필드 처리
-                if isinstance(new_value, str):
-                    from datetime import datetime, timezone
-                    if len(new_value) == 10:  # YYYY-MM-DD 형식
-                        new_value = new_value + 'T00:00:00'
-                    new_value = datetime.fromisoformat(new_value)
-                    if new_value.tzinfo is None:
-                        new_value = new_value.replace(tzinfo=timezone.utc)
-            
-            # 기존 값과 다른 경우에만 업데이트
-            if getattr(task, field) != new_value:
-                setattr(task, field, new_value)
-                updated = True
+    
+    # 업데이트 가능한 필드들 처리
+    update_data = task_update.dict(exclude_unset=True, exclude={'member_ids'})
+    
+    for field, new_value in update_data.items():
+        if field in ['start_date', 'due_date'] and new_value:
+            # 날짜 필드 처리
+            if isinstance(new_value, str):
+                from datetime import datetime, timezone
+                if len(new_value) == 10:  # YYYY-MM-DD 형식
+                    new_value = new_value + 'T00:00:00'
+                new_value = datetime.fromisoformat(new_value)
+                if new_value.tzinfo is None:
+                    new_value = new_value.replace(tzinfo=timezone.utc)
+        
+        # 기존 값과 다른 경우에만 업데이트
+        if getattr(task, field) != new_value:
+            setattr(task, field, new_value)
+            updated = True
+    
+    # 업무 멤버 업데이트 처리
+    if task_update.member_ids is not None:
+        # 기존 task_members 삭제
+        db.query(TaskMember).filter(TaskMember.task_id == task_id).delete()
+        
+        # 새로운 task_members 추가
+        for user_id in task_update.member_ids:
+            task_member = TaskMember(task_id=task_id, user_id=user_id)
+            db.add(task_member)
+        
+        updated = True
     
     if updated:
         db.commit()
         db.refresh(task)
-        
     
-    return task
+    # 응답에 member_ids 포함
+    task_members = db.query(TaskMember).filter(TaskMember.task_id == task_id).all()
+    member_ids = [tm.user_id for tm in task_members]
+    
+    return TaskResponse(
+        **task.__dict__,
+        assignee_name=task.assignee.name if task.assignee else None,
+        member_ids=member_ids
+    )
 
 
 # 3) Task 삭제 엔드포인트
