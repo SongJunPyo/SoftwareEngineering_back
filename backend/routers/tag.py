@@ -67,6 +67,13 @@ def create_project_tag(
             detail="해당 프로젝트의 멤버만 태그를 생성할 수 있습니다."
         )
     
+    # 뷰어 권한 체크 - 뷰어는 태그 생성 불가
+    if member.role == 'viewer':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="뷰어는 태그를 생성할 수 없습니다."
+        )
+    
     # 중복 태그 확인
     existing_tag = db.query(Tag).filter(
         Tag.project_id == project_id,
@@ -115,6 +122,13 @@ def update_project_tag(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="해당 프로젝트의 멤버만 태그를 수정할 수 있습니다."
+        )
+    
+    # 뷰어 권한 체크 - 뷰어는 태그 수정 불가
+    if member.role == 'viewer':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="뷰어는 태그를 수정할 수 없습니다."
         )
     
     # 기존 태그 확인
@@ -183,6 +197,13 @@ def delete_project_tag(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="해당 프로젝트의 멤버만 태그를 삭제할 수 있습니다."
+        )
+    
+    # 뷰어 권한 체크 - 뷰어는 태그 삭제 불가
+    if member.role == 'viewer':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="뷰어는 태그를 삭제할 수 없습니다."
         )
     
     # 태그 확인
@@ -267,6 +288,13 @@ def update_task_tags(
             detail="해당 프로젝트의 멤버만 작업 태그를 수정할 수 있습니다."
         )
     
+    # 뷰어 권한 체크 - 뷰어는 작업 태그 수정 불가
+    if member.role == 'viewer':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="뷰어는 작업 태그를 수정할 수 없습니다."
+        )
+    
     # 태그들이 해당 프로젝트에 존재하는지 확인
     for tag_name in tag_request.tag_names:
         existing_tag = db.query(Tag).filter(
@@ -319,6 +347,13 @@ def remove_task_tag(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="해당 프로젝트의 멤버만 작업 태그를 제거할 수 있습니다."
+        )
+    
+    # 뷰어 권한 체크 - 뷰어는 작업 태그 제거 불가
+    if member.role == 'viewer':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="뷰어는 작업 태그를 제거할 수 없습니다."
         )
     
     # 작업 태그 확인 및 삭제

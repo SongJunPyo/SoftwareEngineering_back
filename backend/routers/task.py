@@ -41,7 +41,25 @@ async def create_task(
             detail="프로젝트를 찾을 수 없습니다."
         )
 
-    # 3) 담당자가 프로젝트 멤버인지 검증
+    # 3) 현재 사용자가 프로젝트 멤버인지 검증 및 뷰어 권한 체크
+    current_user_member = db.query(ProjectMember).filter(
+        ProjectMember.project_id == task_in.project_id,
+        ProjectMember.user_id == current_user.user_id
+    ).first()
+    if not current_user_member:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="해당 프로젝트의 멤버만 업무를 생성할 수 있습니다."
+        )
+    
+    # 뷰어 권한 체크 - 뷰어는 업무 생성 불가
+    if current_user_member.role == 'viewer':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="뷰어는 업무를 생성할 수 없습니다."
+        )
+
+    # 4) 담당자가 프로젝트 멤버인지 검증
     assignee_member = db.query(ProjectMember).filter(
         ProjectMember.project_id == task_in.project_id,
         ProjectMember.user_id == task_in.assignee_id
@@ -52,14 +70,14 @@ async def create_task(
             detail="담당자가 해당 프로젝트의 멤버가 아닙니다."
         )
 
-    # 4) 날짜 유효성 검증
+    # 5) 날짜 유효성 검증
     if task_in.start_date > task_in.due_date:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="시작일은 마감일보다 늦을 수 없습니다."
         )
 
-    # 5) 상위 업무 유효성 검증
+    # 6) 상위 업무 유효성 검증
     if task_in.parent_task_id is not None:
         parent = db.query(TaskModel).filter_by(
             task_id=task_in.parent_task_id
@@ -102,7 +120,7 @@ async def create_task(
     else:
         status_value = "complete"
 
-    # 5-1) 태그 유효성 검증
+    # 7) 태그 유효성 검증
     if task_in.tag_names:
         for tag_name in task_in.tag_names:
             existing_tag = db.query(Tag).filter(
@@ -115,7 +133,7 @@ async def create_task(
                     detail=f"태그 '{tag_name}'이 해당 프로젝트에 존재하지 않습니다."
                 )
 
-    # 6) tasks 테이블에 새 업무 저장 (assignee_id는 프론트에서 받은 값 사용)
+    # 8) tasks 테이블에 새 업무 저장 (assignee_id는 프론트에서 받은 값 사용)
     task = TaskModel(
         title           = task_in.title,
         project_id      = task_in.project_id,
@@ -131,14 +149,14 @@ async def create_task(
     db.commit()
     db.refresh(task)
 
-    # 7) task_members 테이블에 매핑 추가 (담당자가 필수이므로 항상 추가)
+    # 9) task_members 테이블에 매핑 추가 (담당자가 필수이므로 항상 추가)
     mapping = TaskMember(
         task_id     = task.task_id,
         user_id     = task_in.assignee_id,
     )
     db.add(mapping)
     
-    # 7-1) 태그 할당
+    # 10) 태그 할당
     if task_in.tag_names:
         for tag_name in task_in.tag_names:
             task_tag = TaskTag(
@@ -150,7 +168,7 @@ async def create_task(
     db.commit()
     
     
-    # 8) 생성된 Task 객체를 TaskResponse 형태로 반환 (assignee_name 포함)
+    # 11) 생성된 Task 객체를 TaskResponse 형태로 반환 (assignee_name 포함)
     # task_members 조회
     task_members = db.query(TaskMember).filter(TaskMember.task_id == task.task_id).all()
     member_ids = [tm.user_id for tm in task_members]
@@ -275,6 +293,13 @@ async def update_task(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="해당 업무의 담당자 또는 프로젝트 멤버만 수정할 수 있습니다."
+        )
+    
+    # 뷰어 권한 체크 - 뷰어는 업무 수정 불가
+    if project_member and project_member.role == 'viewer':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="뷰어는 업무를 수정할 수 없습니다."
         )
     
     # 담당자 변경 시 새 담당자가 프로젝트 멤버인지 검증
@@ -539,6 +564,18 @@ async def update_task_status(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="해당 업무의 담당자만 상태를 변경할 수 있습니다."
+        )
+    
+    # 뷰어 권한 체크 - 뷰어는 업무 상태 변경 불가
+    assignee_member = db.query(ProjectMember).filter(
+        ProjectMember.project_id == task.project_id,
+        ProjectMember.user_id == current_user.user_id
+    ).first()
+    
+    if assignee_member and assignee_member.role == 'viewer':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="뷰어는 업무 상태를 변경할 수 없습니다."
         )
 
     new_status = status_payload.get("status")
