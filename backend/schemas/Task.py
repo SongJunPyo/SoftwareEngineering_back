@@ -11,6 +11,7 @@ class TaskCreateRequest(BaseModel):
     due_date: datetime
     project_id: int
     is_parent_task: Optional[bool] = False  # 상위업무 여부
+    tag_names: Optional[List[str]] = []  # 태그 목록
 
     class Config:
         orm_mode = True
@@ -26,6 +27,7 @@ class TaskUpdateRequest(BaseModel):
     parent_task_id: Optional[int] = None  # 상위 업무 ID
     is_parent_task: Optional[bool] = None  # 상위업무 여부
     member_ids: Optional[List[int]] = None  # 업무 멤버 ID 리스트
+    tag_names: Optional[List[str]] = None  # 태그 목록
 
     class Config:
         orm_mode = True
@@ -46,6 +48,7 @@ class TaskResponse(BaseModel):
     assignee_name: Optional[str] = None  # 담당자 이름
     parent_task_title: Optional[str] = None  # 상위 업무 제목
     member_ids: Optional[List[int]] = None  # 업무 멤버 ID 리스트
+    tag_names: Optional[List[str]] = []  # 태그 목록
     
     class Config:
         orm_mode = True

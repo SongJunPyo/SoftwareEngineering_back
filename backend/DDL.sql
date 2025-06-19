@@ -283,7 +283,8 @@ ALTER TABLE IF EXISTS public.task_members
     ON DELETE CASCADE;
 
 
-ALTER TABLE IF EXISTS public.task_tags
+ALTER TABLE IF EXISTS public.
+
     ADD CONSTRAINT task_tags_task_id_fkey FOREIGN KEY (task_id)
     REFERENCES public.tasks (task_id) MATCH SIMPLE
     ON UPDATE NO ACTION

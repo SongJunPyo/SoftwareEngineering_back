@@ -9,6 +9,7 @@ from backend.middleware.auth import verify_token
 from backend.models.task import Task as TaskModel
 from backend.models.task import TaskMember
 from backend.models.project import Project, ProjectMember
+from backend.models.tag import Tag, TaskTag
 from backend.schemas.Task import TaskCreateRequest, TaskUpdateRequest, TaskResponse
 
 router = APIRouter(prefix="/api/v1")
@@ -101,6 +102,19 @@ async def create_task(
     else:
         status_value = "complete"
 
+    # 5-1) 태그 유효성 검증
+    if task_in.tag_names:
+        for tag_name in task_in.tag_names:
+            existing_tag = db.query(Tag).filter(
+                Tag.project_id == task_in.project_id,
+                Tag.tag_name == tag_name
+            ).first()
+            if not existing_tag:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"태그 '{tag_name}'이 해당 프로젝트에 존재하지 않습니다."
+                )
+
     # 6) tasks 테이블에 새 업무 저장 (assignee_id는 프론트에서 받은 값 사용)
     task = TaskModel(
         title           = task_in.title,
@@ -123,6 +137,16 @@ async def create_task(
         user_id     = task_in.assignee_id,
     )
     db.add(mapping)
+    
+    # 7-1) 태그 할당
+    if task_in.tag_names:
+        for tag_name in task_in.tag_names:
+            task_tag = TaskTag(
+                task_id=task.task_id,
+                tag_name=tag_name
+            )
+            db.add(task_tag)
+    
     db.commit()
     
     
@@ -130,6 +154,10 @@ async def create_task(
     # task_members 조회
     task_members = db.query(TaskMember).filter(TaskMember.task_id == task.task_id).all()
     member_ids = [tm.user_id for tm in task_members]
+    
+    # 태그 조회
+    task_tags = db.query(TaskTag).filter(TaskTag.task_id == task.task_id).all()
+    tag_names = [tt.tag_name for tt in task_tags]
     
     # 상위 업무 제목 조회
     parent_task_title = None
@@ -141,7 +169,8 @@ async def create_task(
         **task.__dict__,
         assignee_name=task.assignee.name if task.assignee else None,
         parent_task_title=parent_task_title,
-        member_ids=member_ids
+        member_ids=member_ids,
+        tag_names=tag_names
     )
 
 @router.get("/tasks", response_model=List[TaskResponse])
@@ -162,6 +191,10 @@ def read_tasks(
         task_members = db.query(TaskMember).filter(TaskMember.task_id == task.task_id).all()
         member_ids = [tm.user_id for tm in task_members]
         
+        # 태그 조회
+        task_tags = db.query(TaskTag).filter(TaskTag.task_id == task.task_id).all()
+        tag_names = [tt.tag_name for tt in task_tags]
+        
         # 상위 업무 제목 조회
         parent_task_title = None
         if task.parent_task_id:
@@ -172,7 +205,8 @@ def read_tasks(
             **task.__dict__,
             assignee_name=task.assignee.name if task.assignee else None,
             parent_task_title=parent_task_title,
-            member_ids=member_ids
+            member_ids=member_ids,
+            tag_names=tag_names
         ))
     
     return result
@@ -196,6 +230,10 @@ def read_task(
     task_members = db.query(TaskMember).filter(TaskMember.task_id == task_id).all()
     member_ids = [tm.user_id for tm in task_members]
 
+    # 태그 조회
+    task_tags = db.query(TaskTag).filter(TaskTag.task_id == task_id).all()
+    tag_names = [tt.tag_name for tt in task_tags]
+
     # 상위 업무 제목 조회
     parent_task_title = None
     if task.parent_task_id:
@@ -206,7 +244,8 @@ def read_task(
         **task.__dict__,
         assignee_name=task.assignee.name if task.assignee else None,
         parent_task_title=parent_task_title,
-        member_ids=member_ids
+        member_ids=member_ids,
+        tag_names=tag_names
     )
 
 
@@ -313,7 +352,7 @@ async def update_task(
     updated = False
     
     # 업데이트 가능한 필드들 처리
-    update_data = task_update.dict(exclude_unset=True, exclude={'member_ids'})
+    update_data = task_update.dict(exclude_unset=True, exclude={'member_ids', 'tag_names'})
     
     for field, new_value in update_data.items():
         if field in ['start_date', 'due_date'] and new_value:
@@ -348,6 +387,30 @@ async def update_task(
         
         updated = True
     
+    # 태그 업데이트 처리
+    if task_update.tag_names is not None:
+        # 태그 유효성 검증
+        for tag_name in task_update.tag_names:
+            existing_tag = db.query(Tag).filter(
+                Tag.project_id == task.project_id,
+                Tag.tag_name == tag_name
+            ).first()
+            if not existing_tag:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"태그 '{tag_name}'이 해당 프로젝트에 존재하지 않습니다."
+                )
+        
+        # 기존 task_tags 삭제
+        db.query(TaskTag).filter(TaskTag.task_id == task_id).delete()
+        
+        # 새로운 task_tags 추가
+        for tag_name in task_update.tag_names:
+            task_tag = TaskTag(task_id=task_id, tag_name=tag_name)
+            db.add(task_tag)
+        
+        updated = True
+    
     if updated:
         # updated_at은 onupdate로 자동 설정되지만 명시적으로 설정
         task.updated_at = datetime.now(timezone.utc)
@@ -357,6 +420,10 @@ async def update_task(
     # 응답에 member_ids와 parent_task_title 포함
     task_members = db.query(TaskMember).filter(TaskMember.task_id == task_id).all()
     member_ids = [tm.user_id for tm in task_members]
+    
+    # 태그 조회
+    task_tags = db.query(TaskTag).filter(TaskTag.task_id == task_id).all()
+    tag_names = [tt.tag_name for tt in task_tags]
     
     # 상위 업무 제목 조회
     parent_task_title = None
@@ -368,7 +435,8 @@ async def update_task(
         **task.__dict__,
         assignee_name=task.assignee.name if task.assignee else None,
         parent_task_title=parent_task_title,
-        member_ids=member_ids
+        member_ids=member_ids,
+        tag_names=tag_names
     )
 
 
@@ -429,6 +497,10 @@ def read_parent_tasks(
         task_members = db.query(TaskMember).filter(TaskMember.task_id == task.task_id).all()
         member_ids = [tm.user_id for tm in task_members]
         
+        # 태그 조회
+        task_tags = db.query(TaskTag).filter(TaskTag.task_id == task.task_id).all()
+        tag_names = [tt.tag_name for tt in task_tags]
+        
         # 상위 업무 제목 조회
         parent_task_title = None
         if task.parent_task_id:
@@ -439,7 +511,8 @@ def read_parent_tasks(
             **task.__dict__,
             assignee_name=task.assignee.name if task.assignee else None,
             parent_task_title=parent_task_title,
-            member_ids=member_ids
+            member_ids=member_ids,
+            tag_names=tag_names
         ))
     
     return result
