@@ -113,12 +113,17 @@ async def create_task(
     start_date = to_aware(task_in.start_date)
     due_date = to_aware(task_in.due_date)
 
-    if now < start_date:
-        status_value = "todo"
-    elif start_date <= now <= due_date:
-        status_value = "In progress"
+    # 프론트엔드에서 status가 전송된 경우 해당 값 사용, 없으면 자동 계산
+    if hasattr(task_in, 'status') and task_in.status:
+        status_value = task_in.status
     else:
-        status_value = "complete"
+        # 자동 계산 로직
+        if now < start_date:
+            status_value = "todo"
+        elif start_date <= now <= due_date:
+            status_value = "In progress"
+        else:
+            status_value = "complete"
 
     # 7) 태그 유효성 검증
     if task_in.tag_names:

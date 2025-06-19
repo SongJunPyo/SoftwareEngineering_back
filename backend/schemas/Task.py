@@ -12,6 +12,7 @@ class TaskCreateRequest(BaseModel):
     project_id: int
     is_parent_task: Optional[bool] = False  # 상위업무 여부
     tag_names: Optional[List[str]] = []  # 태그 목록
+    status: Optional[str] = None  # 업무 상태
 
     class Config:
         orm_mode = True
