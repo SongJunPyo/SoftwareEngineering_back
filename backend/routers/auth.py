@@ -5,7 +5,7 @@ from backend.models.user import User
 from backend.models.workspace import Workspace
 from backend.database.base import get_db
 from backend.utils.jwt_utils import create_access_token, create_refresh_token, refresh_access_token
-from backend.middleware.auth import verify_refresh_token
+from backend.middleware.auth import verify_refresh_token, verify_token
 import bcrypt
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
@@ -158,4 +158,14 @@ def check_email(data: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="이메일을 입력해주세요.")
     
     exists = db.query(User).filter(User.email == email).first() is not None
-    return {"exists": exists} 
+    return {"exists": exists}
+
+@router.get("/me")
+def get_current_user(current_user: User = Depends(verify_token)):
+    """현재 로그인된 사용자 정보 조회"""
+    return {
+        "user_id": current_user.user_id,
+        "email": current_user.email,
+        "name": current_user.name,
+        "provider": current_user.provider
+    } 

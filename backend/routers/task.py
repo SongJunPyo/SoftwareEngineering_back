@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime, timezone
+import asyncio
 
 from backend.database.base import get_db
 from backend.middleware.auth import verify_token
 from backend.models.task import Task as TaskModel
 from backend.models.task import TaskMember
-from backend.models.project import Project
+from backend.models.project import Project, ProjectMember
 from backend.schemas.Task import TaskCreateRequest, TaskResponse
 
 router = APIRouter(prefix="/api/v1")
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/api/v1")
     response_model=TaskResponse,
     status_code=status.HTTP_201_CREATED
 )
-def create_task(
+async def create_task(
     task_in: TaskCreateRequest,
     db: Session = Depends(get_db),
     current_user = Depends(verify_token),
@@ -37,20 +38,6 @@ def create_task(
         if not parent:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Parent task not found")
 
-    # # 3) tasks 테이블에 새 업무 저장 (assignee_id는 프론트에서 받은 값 사용)
-    # task = TaskModel(
-    #     title           = task_in.title,
-    #     project_id      = task_in.project_id,
-    #     parent_task_id  = task_in.parent_task_id,
-    #     start_date      = task_in.start_date,
-    #     due_date        = task_in.due_date,
-    #     priority        = task_in.priority,
-    #     assignee_id     = task_in.assignee_id,
-    # )
-    # db.add(task)
-    # db.commit()
-    # db.refresh(task)
-        # === status 자동 결정 ===
     now = datetime.now(timezone.utc)
     start_date = task_in.start_date
     due_date = task_in.due_date
@@ -99,6 +86,8 @@ def create_task(
         )
         db.add(mapping)
     db.commit()
+    
+    
     # 5) 생성된 Task 객체를 반환 (TaskOut 직렬화)
     return task
 
@@ -122,23 +111,6 @@ def read_tasks(
       for task in tasks
     ]
 
-# # 1) 단일 Task 조회 엔드포인트
-# @router.get(
-#     "/tasks/{task_id}",
-#     response_model=TaskResponse,
-#     status_code=status.HTTP_200_OK
-# )
-# def read_task(
-#     task_id: int,
-#     db: Session = Depends(get_db),
-#     current_user = Depends(verify_token),
-# ):
-#     task = db.query(TaskModel).filter(TaskModel.task_id == task_id).first()
-#     if not task:
-#         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-
-#     # assignee_name이 TaskResponse 스키마에 포함돼 있다면, Task 모델에 relationship이 있어야 함
-#     return task
 # 1) 단일 Task 조회 엔드포인트
 @router.get(
     "/tasks/{task_id}",
@@ -158,15 +130,15 @@ def read_task(
     return task
 
 
-# 2) Task description 업데이트 엔드포인트
+# 2) Task 업데이트 엔드포인트 (description 외 다른 필드도 수정 가능)
 @router.patch(
     "/tasks/{task_id}",
     response_model=TaskResponse,
     status_code=status.HTTP_200_OK
 )
-def update_task_description(
+async def update_task(
     task_id: int,
-    payload: dict,  # {"description": "새로운 설명"} 형태를 가정
+    payload: dict,  # {"description": "새로운 설명", "status": "complete", "priority": "high"} 등
     db: Session = Depends(get_db),
     current_user = Depends(verify_token),
 ):
@@ -174,99 +146,123 @@ def update_task_description(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
-    # 권한 체크가 필요하다면 여기에 추가 (예: 같은 프로젝트 멤버인지 등)
-    new_description = payload.get("description")
-    task.description = new_description
-    db.commit()
-    db.refresh(task)
+    # 권한 검증: Task의 담당자만 수정 가능
+    if task.assignee_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="해당 Task의 담당자만 수정할 수 있습니다"
+        )
+    
+    # 업데이트 가능한 필드들
+    updatable_fields = [
+        'title', 'description', 'status', 'priority', 
+        'start_date', 'due_date', 'assignee_id'
+    ]
+    
+    updated = False
+    for field in updatable_fields:
+        if field in payload:
+            new_value = payload[field]
+            if field in ['start_date', 'due_date'] and new_value:
+                # 날짜 필드 처리
+                if isinstance(new_value, str):
+                    from datetime import datetime, timezone
+                    if len(new_value) == 10:  # YYYY-MM-DD 형식
+                        new_value = new_value + 'T00:00:00'
+                    new_value = datetime.fromisoformat(new_value)
+                    if new_value.tzinfo is None:
+                        new_value = new_value.replace(tzinfo=timezone.utc)
+            
+            # 기존 값과 다른 경우에만 업데이트
+            if getattr(task, field) != new_value:
+                setattr(task, field, new_value)
+                updated = True
+    
+    if updated:
+        db.commit()
+        db.refresh(task)
+        
+    
     return task
 
 
+# 3) Task 삭제 엔드포인트
+@router.delete(
+    "/tasks/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(verify_token),
+):
+    task = db.query(TaskModel).filter(TaskModel.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+    # 권한 검증: Task의 담당자만 삭제 가능
+    if task.assignee_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="해당 Task의 담당자만 삭제할 수 있습니다"
+        )
+    
+    # Task 삭제 전에 관련 정보 저장 (WebSocket 이벤트용)
+    task_info = {
+        "task_id": task.task_id,
+        "project_id": task.project_id,
+        "title": task.title
+    }
+    
+    # Task 삭제 (관련 TaskMember도 CASCADE로 삭제됨)
+    db.delete(task)
+    db.commit()
+    
+    
+    return None  # 204 No Content
 
 
-# # backend/routers/tasks.py
-# from fastapi import APIRouter, Depends, HTTPException, status
-# from sqlalchemy.orm import Session
-# from typing import List
-# from datetime import datetime, timezone
+# 4) Task 상태 변경 전용 엔드포인트
+@router.patch(
+    "/tasks/{task_id}/status",
+    response_model=TaskResponse,
+    status_code=status.HTTP_200_OK
+)
+async def update_task_status(
+    task_id: int,
+    status_payload: dict,  # {"status": "complete"} 형태
+    db: Session = Depends(get_db),
+    current_user = Depends(verify_token),
+):
+    task = db.query(TaskModel).filter(TaskModel.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
-# from backend.database.base import get_db
-# from backend.middleware.auth import verify_token
-# from backend.models.task import Task as TaskModel
-# from backend.models.task import TaskMember
-# from backend.models.project import Project
-# from backend.schemas.Task import TaskCreate, TaskOut
+    # 권한 검증: Task의 담당자만 상태 변경 가능
+    if task.assignee_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="해당 Task의 담당자만 상태를 변경할 수 있습니다"
+        )
 
+    new_status = status_payload.get("status")
+    if not new_status:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Status is required")
+    
+    # 유효한 상태 값 검증
+    valid_statuses = ["todo", "In progress", "complete"]
+    if new_status not in valid_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail=f"Invalid status. Must be one of: {valid_statuses}"
+        )
+    
+    # 상태가 실제로 변경된 경우에만 업데이트
+    if task.status != new_status:
+        task.status = new_status
+        db.commit()
+        db.refresh(task)
+        
+    
+    return task
 
-
-# @router.post(
-#     "/tasks/",
-#     response_model=TaskOut,
-#     status_code=status.HTTP_201_CREATED
-# )
-# def create_task(
-#     task_in: TaskCreate,
-#     db: Session = Depends(get_db),
-#     current_user = Depends(verify_token),
-# ):
-#     # 1) 프로젝트 유효성 검증
-#     project = db.query(Project).filter_by(
-#         project_id=task_in.project_id
-#     ).first()
-#     if not project:
-#         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-
-#     # 2) (선택) 상위 업무 유효성 검증
-#     if task_in.parent_task_id is not None:
-#         parent = db.query(TaskModel).filter_by(
-#             task_id=task_in.parent_task_id
-#         ).first()
-#         if not parent:
-#             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Parent task not found")
-
-#     # 3) tasks 테이블에 새 업무 저장 (assignee_id는 프론트에서 받은 값 사용)
-#     task = TaskModel(
-#         name            = task_in.name,
-#         project_id      = task_in.project_id,
-#         parent_task_id  = task_in.parent_task_id,
-#         start_date      = task_in.start_date,
-#         due_date        = task_in.due_date,
-#         priority        = task_in.priority,
-#         assignee_id     = task_in.assignee_id,
-#     )
-#     db.add(task)
-#     db.commit()
-#     db.refresh(task)
-
-#     # 4) task_members 테이블에 매핑 추가 (project_id, user_id, assigned_at)
-#     mapping = TaskMember(
-#         task_id     = task.task_id,
-#         project_id  = task.project_id,
-#         user_id     = task_in.assignee_id,
-#         assigned_at = datetime.now(timezone.utc)
-#     )
-#     db.add(mapping)
-#     db.commit()
-
-#     # 5) 생성된 Task 객체를 반환 (TaskOut 직렬화)
-#     return task
-
-# @router.get("/tasks/", response_model=List[TaskOut])
-# def read_tasks(
-#     project_id: int,
-#     db: Session = Depends(get_db),
-#     current_user = Depends(verify_token),
-# ):
-#     tasks = (
-#         db.query(TaskModel)
-#           .filter(TaskModel.project_id == project_id)
-#           .all()
-#     )
-#     # assignee 관계를 통해 User.name 이 이미 로드되어 있으므로:
-#     return [
-#       TaskOut(
-#         **task.__dict__,              # TaskCreate 필드 + task_id, created_at 등
-#         assignee_name=task.assignee.name if task.assignee else None
-#       )
-#       for task in tasks
-#     ]

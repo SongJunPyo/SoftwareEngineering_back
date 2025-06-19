@@ -24,6 +24,7 @@ app = FastAPI(
     version="2.0.0"
 )
 
+
 # CORS 설정 (개발 환경용 - 모든 Origin 허용)
 app.add_middleware(
     CORSMiddleware,
@@ -74,7 +75,7 @@ def health_check():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        app, 
+        app,  # 원래 FastAPI 앱 실행
         host="0.0.0.0", 
         port=8005,
         log_level="debug"

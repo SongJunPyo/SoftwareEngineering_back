@@ -16,9 +16,13 @@ def list_project_members(
     db: Session = Depends(get_db),
     current_user = Depends(verify_token),
 ):
+    # 뷰어 역할을 제외한 멤버만 조회 (Task 담당자로 지정 가능한 멤버)
     memberships = (
         db.query(ProjectMember)
-          .filter(ProjectMember.project_id == project_id)
+          .filter(
+              ProjectMember.project_id == project_id,
+              ProjectMember.role != "viewer"  # 뷰어 역할 제외
+          )
           .all()
     )
     result = []
