@@ -17,9 +17,10 @@ class Task(Base):
     start_date = Column(Date, nullable=False, default=lambda: date.today())
     due_date = Column(Date, nullable=False, default=lambda: date.today())
     status = Column(Text, nullable=False, default="todo")
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     assignee = relationship("User", back_populates="tasks")
+    parent_task = relationship("Task", remote_side=[task_id], backref="subtasks")
 
 class TaskMember(Base):
     __tablename__ = "task_members"

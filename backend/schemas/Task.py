@@ -38,9 +38,10 @@ class TaskResponse(BaseModel):
     start_date: datetime
     due_date: datetime
     status: str
-    updated_at: Optional[datetime]
+    updated_at: Optional[datetime] = None  # 생성/수정일
     description: Optional[str] = None  # 업무 설명
     assignee_name: Optional[str] = None  # 담당자 이름
+    parent_task_title: Optional[str] = None  # 상위 업무 제목
     member_ids: Optional[List[int]] = None  # 업무 멤버 ID 리스트
     
     class Config:

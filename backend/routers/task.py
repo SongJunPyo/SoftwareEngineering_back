@@ -109,9 +109,16 @@ def read_tasks(
         task_members = db.query(TaskMember).filter(TaskMember.task_id == task.task_id).all()
         member_ids = [tm.user_id for tm in task_members]
         
+        # 상위 업무 제목 조회
+        parent_task_title = None
+        if task.parent_task_id:
+            parent_task = db.query(TaskModel).filter(TaskModel.task_id == task.parent_task_id).first()
+            parent_task_title = parent_task.title if parent_task else None
+        
         result.append(TaskResponse(
             **task.__dict__,
             assignee_name=task.assignee.name if task.assignee else None,
+            parent_task_title=parent_task_title,
             member_ids=member_ids
         ))
     
@@ -136,9 +143,16 @@ def read_task(
     task_members = db.query(TaskMember).filter(TaskMember.task_id == task_id).all()
     member_ids = [tm.user_id for tm in task_members]
 
+    # 상위 업무 제목 조회
+    parent_task_title = None
+    if task.parent_task_id:
+        parent_task = db.query(TaskModel).filter(TaskModel.task_id == task.parent_task_id).first()
+        parent_task_title = parent_task.title if parent_task else None
+
     return TaskResponse(
         **task.__dict__,
         assignee_name=task.assignee.name if task.assignee else None,
+        parent_task_title=parent_task_title,
         member_ids=member_ids
     )
 
@@ -211,16 +225,25 @@ async def update_task(
         updated = True
     
     if updated:
+        # updated_at은 onupdate로 자동 설정되지만 명시적으로 설정
+        task.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(task)
     
-    # 응답에 member_ids 포함
+    # 응답에 member_ids와 parent_task_title 포함
     task_members = db.query(TaskMember).filter(TaskMember.task_id == task_id).all()
     member_ids = [tm.user_id for tm in task_members]
+    
+    # 상위 업무 제목 조회
+    parent_task_title = None
+    if task.parent_task_id:
+        parent_task = db.query(TaskModel).filter(TaskModel.task_id == task.parent_task_id).first()
+        parent_task_title = parent_task.title if parent_task else None
     
     return TaskResponse(
         **task.__dict__,
         assignee_name=task.assignee.name if task.assignee else None,
+        parent_task_title=parent_task_title,
         member_ids=member_ids
     )
 
