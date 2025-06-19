@@ -180,12 +180,18 @@ async def update_task(
         if field in ['start_date', 'due_date'] and new_value:
             # 날짜 필드 처리
             if isinstance(new_value, str):
-                from datetime import datetime, timezone
-                if len(new_value) == 10:  # YYYY-MM-DD 형식
-                    new_value = new_value + 'T00:00:00'
-                new_value = datetime.fromisoformat(new_value)
-                if new_value.tzinfo is None:
-                    new_value = new_value.replace(tzinfo=timezone.utc)
+                from datetime import datetime, timezone, date
+                try:
+                    # YYYY-MM-DD 형식을 date 객체로 변환
+                    new_value = datetime.strptime(new_value, '%Y-%m-%d').date()
+                except ValueError:
+                    # 다른 형식이면 datetime으로 파싱 후 date로 변환
+                    if len(new_value) == 10:  # YYYY-MM-DD 형식
+                        new_value = new_value + 'T00:00:00'
+                    dt = datetime.fromisoformat(new_value)
+                    new_value = dt.date()
+            elif isinstance(new_value, datetime):
+                new_value = new_value.date()
         
         # 기존 값과 다른 경우에만 업데이트
         if getattr(task, field) != new_value:

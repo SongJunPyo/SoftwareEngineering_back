@@ -22,6 +22,7 @@ class TaskUpdateRequest(BaseModel):
     description: Optional[str] = None
     start_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
+    parent_task_id: Optional[int] = None  # 상위 업무 ID
     member_ids: Optional[List[int]] = None  # 업무 멤버 ID 리스트
 
     class Config:
