@@ -10,6 +10,7 @@ class TaskCreateRequest(BaseModel):
     start_date: datetime
     due_date: datetime
     project_id: int
+    is_parent_task: Optional[bool] = False  # 상위업무 여부
 
     class Config:
         orm_mode = True
@@ -23,6 +24,7 @@ class TaskUpdateRequest(BaseModel):
     start_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     parent_task_id: Optional[int] = None  # 상위 업무 ID
+    is_parent_task: Optional[bool] = None  # 상위업무 여부
     member_ids: Optional[List[int]] = None  # 업무 멤버 ID 리스트
 
     class Config:
@@ -38,6 +40,7 @@ class TaskResponse(BaseModel):
     start_date: datetime
     due_date: datetime
     status: str
+    is_parent_task: Optional[bool] = False  # 상위업무 여부
     updated_at: Optional[datetime] = None  # 생성/수정일
     description: Optional[str] = None  # 업무 설명
     assignee_name: Optional[str] = None  # 담당자 이름

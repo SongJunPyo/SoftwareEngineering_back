@@ -73,6 +73,7 @@ async def create_task(
         priority        = task_in.priority,
         assignee_id     = task_in.assignee_id,
         status          = status_value,  # status 필드 자동 설정
+        is_parent_task  = task_in.is_parent_task,
     )
     db.add(task)
     db.commit()
@@ -282,6 +283,43 @@ async def delete_task(
     
     
     return None  # 204 No Content
+
+
+# 상위업무만 조회하는 엔드포인트
+@router.get("/parent-tasks", response_model=List[TaskResponse])
+def read_parent_tasks(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(verify_token),
+):
+    """프로젝트의 상위업무(is_parent_task=True)만 조회"""
+    tasks = (
+        db.query(TaskModel)
+          .filter(TaskModel.project_id == project_id)
+          .filter(TaskModel.is_parent_task == True)
+          .all()
+    )
+    
+    result = []
+    for task in tasks:
+        # task_members 조회
+        task_members = db.query(TaskMember).filter(TaskMember.task_id == task.task_id).all()
+        member_ids = [tm.user_id for tm in task_members]
+        
+        # 상위 업무 제목 조회
+        parent_task_title = None
+        if task.parent_task_id:
+            parent_task = db.query(TaskModel).filter(TaskModel.task_id == task.parent_task_id).first()
+            parent_task_title = parent_task.title if parent_task else None
+        
+        result.append(TaskResponse(
+            **task.__dict__,
+            assignee_name=task.assignee.name if task.assignee else None,
+            parent_task_title=parent_task_title,
+            member_ids=member_ids
+        ))
+    
+    return result
 
 
 # 4) Task 상태 변경 전용 엔드포인트

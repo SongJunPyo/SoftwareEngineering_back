@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, Text, DateTime, BigInteger, ForeignKey
+from sqlalchemy.orm import relationship
 from backend.database.base import Base
 
 class Comment(Base):
@@ -11,6 +12,8 @@ class Comment(Base):
     content = Column(Text, nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     is_updated = Column(Integer, nullable=False, default=0)  # 0: not updated(작성됨), 1: updated(수정됨)
+
+    user = relationship("User")
 
 class File(Base):
     __tablename__ = "files"
