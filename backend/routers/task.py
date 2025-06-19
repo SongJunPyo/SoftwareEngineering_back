@@ -23,20 +23,58 @@ async def create_task(
     db: Session = Depends(get_db),
     current_user = Depends(verify_token),
 ):
-    # 1) 프로젝트 유효성 검증
+    # 1) 담당자 필수 검증
+    if task_in.assignee_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="담당자를 지정해주세요."
+        )
+
+    # 2) 프로젝트 유효성 검증
     project = db.query(Project).filter_by(
         project_id=task_in.project_id
     ).first()
     if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="프로젝트를 찾을 수 없습니다."
+        )
 
-    # 2) (선택) 상위 업무 유효성 검증
+    # 3) 담당자가 프로젝트 멤버인지 검증
+    assignee_member = db.query(ProjectMember).filter(
+        ProjectMember.project_id == task_in.project_id,
+        ProjectMember.user_id == task_in.assignee_id
+    ).first()
+    if not assignee_member:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="담당자가 해당 프로젝트의 멤버가 아닙니다."
+        )
+
+    # 4) 날짜 유효성 검증
+    if task_in.start_date > task_in.due_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="시작일은 마감일보다 늦을 수 없습니다."
+        )
+
+    # 5) 상위 업무 유효성 검증
     if task_in.parent_task_id is not None:
         parent = db.query(TaskModel).filter_by(
             task_id=task_in.parent_task_id
         ).first()
         if not parent:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Parent task not found")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail="상위 업무를 찾을 수 없습니다."
+            )
+        
+        # 상위 업무가 같은 프로젝트에 속하는지 검증
+        if parent.project_id != task_in.project_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="상위 업무는 같은 프로젝트 내에서만 선택할 수 있습니다."
+            )
 
     now = datetime.now(timezone.utc)
     start_date = task_in.start_date
@@ -63,7 +101,7 @@ async def create_task(
     else:
         status_value = "complete"
 
-    # 3) tasks 테이블에 새 업무 저장 (assignee_id는 프론트에서 받은 값 사용)
+    # 6) tasks 테이블에 새 업무 저장 (assignee_id는 프론트에서 받은 값 사용)
     task = TaskModel(
         title           = task_in.title,
         project_id      = task_in.project_id,
@@ -79,18 +117,32 @@ async def create_task(
     db.commit()
     db.refresh(task)
 
-    # 4) task_members 테이블에 매핑 추가 (project_id, user_id, assigned_at)
-    if task_in.assignee_id is not None:
-        mapping = TaskMember(
-            task_id     = task.task_id,
-            user_id     = task_in.assignee_id,
-        )
-        db.add(mapping)
+    # 7) task_members 테이블에 매핑 추가 (담당자가 필수이므로 항상 추가)
+    mapping = TaskMember(
+        task_id     = task.task_id,
+        user_id     = task_in.assignee_id,
+    )
+    db.add(mapping)
     db.commit()
     
     
-    # 5) 생성된 Task 객체를 반환 (TaskOut 직렬화)
-    return task
+    # 8) 생성된 Task 객체를 TaskResponse 형태로 반환 (assignee_name 포함)
+    # task_members 조회
+    task_members = db.query(TaskMember).filter(TaskMember.task_id == task.task_id).all()
+    member_ids = [tm.user_id for tm in task_members]
+    
+    # 상위 업무 제목 조회
+    parent_task_title = None
+    if task.parent_task_id:
+        parent_task = db.query(TaskModel).filter(TaskModel.task_id == task.parent_task_id).first()
+        parent_task_title = parent_task.title if parent_task else None
+    
+    return TaskResponse(
+        **task.__dict__,
+        assignee_name=task.assignee.name if task.assignee else None,
+        parent_task_title=parent_task_title,
+        member_ids=member_ids
+    )
 
 @router.get("/tasks", response_model=List[TaskResponse])
 def read_tasks(
@@ -138,7 +190,7 @@ def read_task(
 ):
     task = db.query(TaskModel).filter(TaskModel.task_id == task_id).first()
     if not task:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="업무를 찾을 수 없습니다.")
 
     # task_members 조회
     task_members = db.query(TaskMember).filter(TaskMember.task_id == task_id).all()
@@ -172,7 +224,7 @@ async def update_task(
 ):
     task = db.query(TaskModel).filter(TaskModel.task_id == task_id).first()
     if not task:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="업무를 찾을 수 없습니다.")
 
     # 권한 검증: Task의 담당자 또는 프로젝트 멤버만 수정 가능
     project_member = db.query(ProjectMember).filter(
@@ -183,8 +235,80 @@ async def update_task(
     if task.assignee_id != current_user.user_id and not project_member:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
-            detail="해당 Task의 담당자 또는 프로젝트 멤버만 수정할 수 있습니다"
+            detail="해당 업무의 담당자 또는 프로젝트 멤버만 수정할 수 있습니다."
         )
+    
+    # 담당자 변경 시 새 담당자가 프로젝트 멤버인지 검증
+    if task_update.assignee_id is not None and task_update.assignee_id != task.assignee_id:
+        new_assignee_member = db.query(ProjectMember).filter(
+            ProjectMember.project_id == task.project_id,
+            ProjectMember.user_id == task_update.assignee_id
+        ).first()
+        if not new_assignee_member:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="새 담당자가 해당 프로젝트의 멤버가 아닙니다."
+            )
+    
+    # 날짜 유효성 검증
+    start_date = task_update.start_date if task_update.start_date else task.start_date
+    due_date = task_update.due_date if task_update.due_date else task.due_date
+    
+    # 문자열을 date 객체로 변환하여 비교
+    if isinstance(start_date, str):
+        start_date = datetime.strptime(start_date[:10], '%Y-%m-%d').date()
+    elif isinstance(start_date, datetime):
+        start_date = start_date.date()
+        
+    if isinstance(due_date, str):
+        due_date = datetime.strptime(due_date[:10], '%Y-%m-%d').date()
+    elif isinstance(due_date, datetime):
+        due_date = due_date.date()
+    
+    if start_date > due_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="시작일은 마감일보다 늦을 수 없습니다."
+        )
+    
+    # 상위 업무 변경 시 검증
+    if task_update.parent_task_id is not None and task_update.parent_task_id != task.parent_task_id:
+        # 자기 자신을 상위 업무로 설정하는 것 방지
+        if task_update.parent_task_id == task.task_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="자기 자신을 상위 업무로 설정할 수 없습니다."
+            )
+        
+        # 상위 업무 존재 여부 검증
+        parent_task = db.query(TaskModel).filter(TaskModel.task_id == task_update.parent_task_id).first()
+        if not parent_task:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="상위 업무를 찾을 수 없습니다."
+            )
+        
+        # 상위 업무가 같은 프로젝트에 속하는지 검증
+        if parent_task.project_id != task.project_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="상위 업무는 같은 프로젝트 내에서만 선택할 수 있습니다."
+            )
+        
+        # 순환 참조 방지 (현재 업무가 새로운 상위 업무의 조상인지 확인)
+        def check_circular_reference(current_task_id, target_parent_id):
+            current = db.query(TaskModel).filter(TaskModel.task_id == target_parent_id).first()
+            while current and current.parent_task_id:
+                if current.parent_task_id == current_task_id:
+                    return True
+                current = db.query(TaskModel).filter(TaskModel.task_id == current.parent_task_id).first()
+            return False
+        
+        if check_circular_reference(task.task_id, task_update.parent_task_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="상위 업무 설정으로 인해 순환 참조가 발생합니다."
+            )
     
     updated = False
     
@@ -195,7 +319,6 @@ async def update_task(
         if field in ['start_date', 'due_date'] and new_value:
             # 날짜 필드 처리
             if isinstance(new_value, str):
-                from datetime import datetime, timezone, date
                 try:
                     # YYYY-MM-DD 형식을 date 객체로 변환
                     new_value = datetime.strptime(new_value, '%Y-%m-%d').date()
@@ -261,13 +384,13 @@ async def delete_task(
 ):
     task = db.query(TaskModel).filter(TaskModel.task_id == task_id).first()
     if not task:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="업무를 찾을 수 없습니다.")
 
     # 권한 검증: Task의 담당자만 삭제 가능
     if task.assignee_id != current_user.user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
-            detail="해당 Task의 담당자만 삭제할 수 있습니다"
+            detail="해당 업무의 담당자만 삭제할 수 있습니다."
         )
     
     # Task 삭제 전에 관련 정보 저장 (WebSocket 이벤트용)
@@ -336,25 +459,25 @@ async def update_task_status(
 ):
     task = db.query(TaskModel).filter(TaskModel.task_id == task_id).first()
     if not task:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="업무를 찾을 수 없습니다.")
 
     # 권한 검증: Task의 담당자만 상태 변경 가능
     if task.assignee_id != current_user.user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
-            detail="해당 Task의 담당자만 상태를 변경할 수 있습니다"
+            detail="해당 업무의 담당자만 상태를 변경할 수 있습니다."
         )
 
     new_status = status_payload.get("status")
     if not new_status:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Status is required")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="상태 값이 필요합니다.")
     
     # 유효한 상태 값 검증
     valid_statuses = ["todo", "In progress", "complete"]
     if new_status not in valid_statuses:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
-            detail=f"Invalid status. Must be one of: {valid_statuses}"
+            detail=f"올바르지 않은 상태입니다. 다음 중 하나여야 합니다: {', '.join(valid_statuses)}"
         )
     
     # 상태가 실제로 변경된 경우에만 업데이트
