@@ -7,33 +7,27 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 # JWT 설정
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your_super_secret_jwt_key_change_in_production")
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "fallback_secret_key_for_development_only")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 7))
 
 # OAuth 설정
-KAKAO_CLIENT_ID = os.getenv("KAKAO_CLIENT_ID", "4eb3eb8b216e68f32dc551a30aa4bf15")
-KAKAO_REDIRECT_URI = os.getenv("KAKAO_REDIRECT_URI", "http://16.176.103.176:8000/oauth/kakao/callback")
+KAKAO_CLIENT_ID = os.getenv("KAKAO_CLIENT_ID")
+KAKAO_REDIRECT_URI = os.getenv("KAKAO_REDIRECT_URI")
 
-NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "Z23l4FA17iEUlK9FPEsn")
-NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "9o1qauKcYd")
-NAVER_REDIRECT_URI = os.getenv("NAVER_REDIRECT_URI", "http://16.176.103.176:8000/oauth/naver/callback")
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 
 # 데이터베이스 설정
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://swe6:4XfmFK3hpNB1XlHBw6cF@sw-engineering.cbwyke862nkz.ap-northeast-2.rds.amazonaws.com:5432/postgres")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./software_engineering.db")
 
 # 환경 설정
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development")  # 개발 환경으로 변경
-DEBUG = os.getenv("DEBUG", "true").lower() == "true"  # 디버그 모드 활성화
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 # CORS 설정
-ALLOWED_ORIGINS = [
-    "http://16.176.103.176:8000",
-    "http://16.176.103.176:3000",
-    "http://localhost:3000",
-    "http://localhost:8000"
-]
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
 # 설정 검증
 def validate_settings():
