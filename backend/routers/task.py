@@ -534,6 +534,15 @@ async def delete_task(
             detail="뷰어는 업무를 삭제할 수 없습니다."
         )
     
+    # 하위 업무 존재 여부 확인 - 하위 업무가 있는 상위 업무는 삭제 불가
+    child_tasks = db.query(TaskModel).filter(TaskModel.parent_task_id == task_id).all()
+    if child_tasks:
+        child_task_titles = [child.title for child in child_tasks]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"상위 업무는 하위 업무가 있을 때 삭제할 수 없습니다. 먼저 {len(child_tasks)}개의 하위 업무를 삭제하거나 다른 상위 업무로 이동해주세요.\n\n하위 업무: {', '.join(child_task_titles)}"
+        )
+    
     # Task 삭제 전에 관련 정보 저장 (WebSocket 이벤트용)
     task_info = {
         "task_id": task.task_id,
