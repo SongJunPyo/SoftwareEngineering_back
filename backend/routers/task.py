@@ -14,6 +14,37 @@ from backend.schemas.Task import TaskCreateRequest, TaskUpdateRequest, TaskRespo
 
 router = APIRouter(prefix="/api/v1")
 
+def can_modify_task(task, current_user, db: Session):
+    """
+    Check if current user can modify/delete the given task.
+    Rules:
+    - Task assignee can always modify their own tasks
+    - Project owners and admins can modify any task in their projects
+    - Project members can only modify their own assigned tasks
+    - Viewers cannot modify any tasks (blocked elsewhere)
+    """
+    # If user is the task assignee, they can modify it
+    if task.assignee_id == current_user.user_id:
+        return True
+    
+    # Check user's role in the project
+    project_member = db.query(ProjectMember).filter(
+        ProjectMember.project_id == task.project_id,
+        ProjectMember.user_id == current_user.user_id
+    ).first()
+    
+    # User must be a project member
+    if not project_member:
+        return False
+    
+    # Owners and admins can modify any task in their projects
+    if project_member.role in ['owner', 'admin']:
+        return True
+    
+    # Members can only modify their own assigned tasks (already checked above)
+    # Viewers cannot modify any tasks (will be blocked by viewer check)
+    return False
+
 @router.post(
     "/tasks",
     response_model=TaskResponse,
@@ -288,19 +319,19 @@ async def update_task(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="업무를 찾을 수 없습니다.")
 
-    # 권한 검증: Task의 담당자 또는 프로젝트 멤버만 수정 가능
+    # 권한 검증: 담당자, 프로젝트 소유자, 관리자만 수정 가능
+    if not can_modify_task(task, current_user, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="해당 업무를 수정할 권한이 없습니다. 담당자이거나 프로젝트 소유자/관리자여야 합니다."
+        )
+    
+    # 뷰어 권한 체크 - 뷰어는 업무 수정 불가
     project_member = db.query(ProjectMember).filter(
         ProjectMember.project_id == task.project_id,
         ProjectMember.user_id == current_user.user_id
     ).first()
     
-    if task.assignee_id != current_user.user_id and not project_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="해당 업무의 담당자 또는 프로젝트 멤버만 수정할 수 있습니다."
-        )
-    
-    # 뷰어 권한 체크 - 뷰어는 업무 수정 불가
     if project_member and project_member.role == 'viewer':
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -484,11 +515,23 @@ async def delete_task(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="업무를 찾을 수 없습니다.")
 
-    # 권한 검증: Task의 담당자만 삭제 가능
-    if task.assignee_id != current_user.user_id:
+    # 권한 검증: 담당자, 프로젝트 소유자, 관리자만 삭제 가능
+    if not can_modify_task(task, current_user, db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
-            detail="해당 업무의 담당자만 삭제할 수 있습니다."
+            detail="해당 업무를 삭제할 권한이 없습니다. 담당자이거나 프로젝트 소유자/관리자여야 합니다."
+        )
+    
+    # 뷰어 권한 체크 - 뷰어는 업무 삭제 불가
+    project_member = db.query(ProjectMember).filter(
+        ProjectMember.project_id == task.project_id,
+        ProjectMember.user_id == current_user.user_id
+    ).first()
+    
+    if project_member and project_member.role == 'viewer':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="뷰어는 업무를 삭제할 수 없습니다."
         )
     
     # Task 삭제 전에 관련 정보 저장 (WebSocket 이벤트용)
@@ -564,20 +607,20 @@ async def update_task_status(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="업무를 찾을 수 없습니다.")
 
-    # 권한 검증: Task의 담당자만 상태 변경 가능
-    if task.assignee_id != current_user.user_id:
+    # 권한 검증: 담당자, 프로젝트 소유자, 관리자만 상태 변경 가능
+    if not can_modify_task(task, current_user, db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
-            detail="해당 업무의 담당자만 상태를 변경할 수 있습니다."
+            detail="해당 업무의 상태를 변경할 권한이 없습니다. 담당자이거나 프로젝트 소유자/관리자여야 합니다."
         )
     
     # 뷰어 권한 체크 - 뷰어는 업무 상태 변경 불가
-    assignee_member = db.query(ProjectMember).filter(
+    project_member = db.query(ProjectMember).filter(
         ProjectMember.project_id == task.project_id,
         ProjectMember.user_id == current_user.user_id
     ).first()
     
-    if assignee_member and assignee_member.role == 'viewer':
+    if project_member and project_member.role == 'viewer':
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="뷰어는 업무 상태를 변경할 수 없습니다."
