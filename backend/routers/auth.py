@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from backend.schemas.LojginSignUP import RegisterRequest, LoginRequest
 from backend.models.user import User
+from backend.models.workspace import Workspace
 from backend.database.base import get_db
 from backend.utils.jwt_utils import create_access_token, create_refresh_token, refresh_access_token
-from backend.middleware.auth import verify_refresh_token
+from backend.middleware.auth import verify_refresh_token, verify_token
 import bcrypt
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
@@ -43,6 +44,16 @@ def register_user(register_data: RegisterRequest, db: Session = Depends(get_db))
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    # 기본 워크스페이스 생성 (order=1)
+    default_workspace = Workspace(
+        user_id=new_user.user_id,
+        name="기본 워크스페이스",
+        order=1
+    )
+    
+    db.add(default_workspace)
+    db.commit()
 
     return {
         "message": "회원가입 성공", 
@@ -147,4 +158,14 @@ def check_email(data: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="이메일을 입력해주세요.")
     
     exists = db.query(User).filter(User.email == email).first() is not None
-    return {"exists": exists} 
+    return {"exists": exists}
+
+@router.get("/me")
+def get_current_user(current_user: User = Depends(verify_token)):
+    """현재 로그인된 사용자 정보 조회"""
+    return {
+        "user_id": current_user.user_id,
+        "email": current_user.email,
+        "name": current_user.name,
+        "provider": current_user.provider
+    } 

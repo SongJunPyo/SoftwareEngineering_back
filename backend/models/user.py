@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy.orm import relationship
 from backend.database.base import Base
 
 class User(Base):
@@ -13,3 +14,5 @@ class User(Base):
     role = Column(Integer, nullable=False, default=3)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    tasks = relationship("Task", back_populates="assignee")

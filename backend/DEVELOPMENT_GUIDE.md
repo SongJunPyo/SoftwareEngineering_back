@@ -7,6 +7,7 @@
 
 - [프로젝트 구조](#프로젝트-구조)
 - [개발 환경 설정](#개발-환경-설정)
+- [JWT 토큰 사용법](#jwt-토큰-사용법)
 - [새로운 기능 추가](#새로운-기능-추가)
 - [코드 병합 가이드](#코드-병합-가이드)
 - [API 문서화](#api-문서화)
@@ -98,6 +99,473 @@ uvicorn main:app --host 0.0.0.0 --port 8005 --reload
 - Swagger UI: http://localhost:8005/docs
 - ReDoc: http://localhost:8005/redoc
 - OpenAPI JSON: http://localhost:8005/openapi.json
+
+---
+
+## 🔐 JWT 토큰 사용법
+
+### 1. JWT 토큰 시스템 개요
+
+우리 프로젝트는 **Access Token** + **Refresh Token** 구조의 JWT 기반 인증 시스템을 사용합니다.
+
+```python
+# 토큰 타입
+- Access Token: API 요청 인증용 (기본 60분)
+- Refresh Token: Access Token 갱신용 (기본 7일)
+```
+
+### 2. 기본 설정 및 환경변수
+
+```bash
+# .env 파일 설정
+JWT_SECRET_KEY=your_super_secret_jwt_key_change_in_production
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60    # 액세스 토큰 만료시간 (분)
+REFRESH_TOKEN_EXPIRE_DAYS=7       # 리프레시 토큰 만료시간 (일)
+```
+
+### 3. 토큰 생성 (Utils 사용법)
+
+#### 토큰 생성 함수
+```python
+from backend.utils.jwt_utils import create_access_token, create_refresh_token
+
+# 사용자 로그인 성공 시
+def create_user_tokens(user_id: int, email: str):
+    """사용자용 토큰 쌍 생성"""
+    token_data = {
+        "sub": str(user_id),  # subject (사용자 ID)
+        "email": email
+    }
+    
+    access_token = create_access_token(token_data)
+    refresh_token = create_refresh_token(token_data)
+    
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer"
+    }
+
+# 라우터에서 사용 예시
+@router.post("/login")
+def login(user_data: LoginRequest, db: Session = Depends(get_db)):
+    # 사용자 인증 로직...
+    user = authenticate_user(user_data.email, user_data.password, db)
+    
+    if user:
+        tokens = create_user_tokens(user.user_id, user.email)
+        return {
+            "message": "로그인 성공",
+            **tokens
+        }
+```
+
+#### 커스텀 데이터가 포함된 토큰 생성
+```python
+# 추가 권한이나 메타데이터가 필요한 경우
+def create_admin_tokens(user_id: int, email: str, role: str):
+    """관리자용 토큰 생성 (추가 권한 정보 포함)"""
+    token_data = {
+        "sub": str(user_id),
+        "email": email,
+        "role": role,  # 추가 정보
+        "permissions": ["read", "write", "admin"]  # 권한 정보
+    }
+    
+    access_token = create_access_token(token_data)
+    refresh_token = create_refresh_token(token_data)
+    
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer"
+    }
+```
+
+### 4. 토큰 검증 (Middleware 사용법)
+
+#### 기본 인증이 필요한 엔드포인트
+```python
+from backend.middleware.auth import verify_token
+from backend.models.user import User
+
+@router.get("/protected-endpoint")
+def protected_endpoint(
+    current_user: User = Depends(verify_token)  # 👈 토큰 검증
+):
+    """인증이 필요한 엔드포인트"""
+    return {
+        "message": f"안녕하세요, {current_user.name}님!",
+        "user_id": current_user.user_id,
+        "email": current_user.email
+    }
+
+@router.post("/user-profile")
+def update_profile(
+    profile_data: ProfileUpdate,
+    current_user: User = Depends(verify_token),  # 👈 현재 사용자 정보
+    db: Session = Depends(get_db)
+):
+    """프로필 업데이트 - 본인만 가능"""
+    # current_user.user_id로 현재 사용자 식별 가능
+    user = db.query(User).filter(User.user_id == current_user.user_id).first()
+    # 업데이트 로직...
+```
+
+#### 리소스 소유권 검증
+```python
+@router.get("/workspaces/{workspace_id}")
+def get_workspace(
+    workspace_id: int,
+    current_user: User = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """워크스페이스 조회 - 소유자만 접근 가능"""
+    workspace = db.query(Workspace).filter(
+        Workspace.id == workspace_id,
+        Workspace.user_id == current_user.user_id  # 👈 소유권 검증
+    ).first()
+    
+    if not workspace:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="워크스페이스를 찾을 수 없거나 접근 권한이 없습니다."
+        )
+    
+    return workspace
+```
+
+#### 선택적 인증 (Optional Authentication)
+```python
+from typing import Optional
+
+@router.get("/public-content")
+def get_public_content(
+    current_user: Optional[User] = Depends(verify_token_optional)  # 👈 선택적 인증
+):
+    """로그인하지 않아도 볼 수 있지만, 로그인 시 추가 정보 제공"""
+    if current_user:
+        return {
+            "content": "공개 콘텐츠",
+            "personalized": f"{current_user.name}님을 위한 추천"
+        }
+    else:
+        return {"content": "공개 콘텐츠"}
+
+# 선택적 인증 미들웨어 (추가 구현 필요)
+async def verify_token_optional(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    """선택적 토큰 검증"""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    
+    try:
+        token = authorization.split(" ")[1]
+        payload = verify_token(token)
+        user = db.query(User).filter(User.user_id == int(payload['sub'])).first()
+        return user
+    except:
+        return None
+```
+
+### 5. 토큰 갱신 (Refresh Token)
+
+#### 리프레시 토큰으로 액세스 토큰 갱신
+```python
+from backend.middleware.auth import verify_refresh_token
+from backend.utils.jwt_utils import refresh_access_token
+
+@router.post("/auth/refresh")
+def refresh_token_endpoint(
+    current_user: User = Depends(verify_refresh_token)  # 👈 리프레시 토큰 검증
+):
+    """액세스 토큰 갱신"""
+    # 새로운 액세스 토큰 생성
+    new_access_token = create_access_token({
+        "sub": str(current_user.user_id),
+        "email": current_user.email
+    })
+    
+    return {
+        "access_token": new_access_token,
+        "token_type": "bearer"
+    }
+```
+
+#### 자동 토큰 갱신 (프론트엔드용)
+```python
+@router.post("/auth/refresh-both")
+def refresh_both_tokens(
+    current_user: User = Depends(verify_refresh_token)
+):
+    """액세스 토큰과 리프레시 토큰 모두 갱신"""
+    tokens = create_user_tokens(current_user.user_id, current_user.email)
+    
+    return {
+        "message": "토큰 갱신 성공",
+        **tokens
+    }
+```
+
+### 6. 권한 기반 접근 제어 (RBAC)
+
+#### 역할 기반 인증 미들웨어
+```python
+# backend/middleware/auth.py에 추가
+from functools import wraps
+from typing import List
+
+def require_roles(allowed_roles: List[str]):
+    """특정 역할만 접근 가능한 데코레이터"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(
+            current_user: User = Depends(verify_token),
+            *args, **kwargs
+        ):
+            # 토큰에서 역할 정보 추출 (토큰 생성 시 포함되어야 함)
+            token = kwargs.get('credentials')  # 실제 구현 시 조정 필요
+            payload = jwt_verify_token(token.credentials)
+            user_role = payload.get("role")
+            
+            if user_role not in allowed_roles:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="접근 권한이 없습니다."
+                )
+            
+            return await func(current_user=current_user, *args, **kwargs)
+        return wrapper
+    return decorator
+
+# 사용 예시
+@router.delete("/admin/users/{user_id}")
+@require_roles(["admin", "super_admin"])  # 👈 관리자만 접근 가능
+def delete_user(
+    user_id: int,
+    current_user: User = Depends(verify_token)
+):
+    """사용자 삭제 - 관리자 전용"""
+    # 삭제 로직...
+```
+
+#### 리소스 권한 검증 유틸리티
+```python
+# backend/utils/permissions.py (새로 생성)
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+from backend.models.user import User
+from backend.models.workspace import Workspace
+from backend.models.project import Project
+
+def check_workspace_permission(
+    workspace_id: int, 
+    user: User, 
+    db: Session,
+    required_permission: str = "read"
+) -> Workspace:
+    """워크스페이스 접근 권한 검증"""
+    workspace = db.query(Workspace).filter(
+        Workspace.id == workspace_id
+    ).first()
+    
+    if not workspace:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="워크스페이스를 찾을 수 없습니다."
+        )
+    
+    # 소유자 확인
+    if workspace.user_id != user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="워크스페이스에 대한 접근 권한이 없습니다."
+        )
+    
+    return workspace
+
+# 사용 예시
+@router.put("/workspaces/{workspace_id}")
+def update_workspace(
+    workspace_id: int,
+    update_data: WorkspaceUpdate,
+    current_user: User = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """워크스페이스 수정"""
+    workspace = check_workspace_permission(
+        workspace_id, current_user, db, "write"
+    )
+    
+    # 수정 로직...
+```
+
+### 7. 토큰 에러 처리
+
+#### 커스텀 예외 핸들러
+```python
+# main.py 또는 별도 파일
+from fastapi import Request
+from fastapi.responses import JSONResponse
+import jwt
+
+@app.exception_handler(jwt.ExpiredSignatureError)
+async def expired_token_handler(request: Request, exc: jwt.ExpiredSignatureError):
+    return JSONResponse(
+        status_code=401,
+        content={
+            "detail": "토큰이 만료되었습니다. 다시 로그인해주세요.",
+            "error_code": "TOKEN_EXPIRED",
+            "timestamp": datetime.now().isoformat()
+        }
+    )
+
+@app.exception_handler(jwt.InvalidTokenError)  
+async def invalid_token_handler(request: Request, exc: jwt.InvalidTokenError):
+    return JSONResponse(
+        status_code=401,
+        content={
+            "detail": "유효하지 않은 토큰입니다.",
+            "error_code": "INVALID_TOKEN", 
+            "timestamp": datetime.now().isoformat()
+        }
+    )
+```
+
+### 8. 프론트엔드 연동 가이드
+
+#### API 요청 헤더 설정
+```javascript
+// 프론트엔드에서 토큰 사용법
+const token = localStorage.getItem('access_token');
+
+// API 요청 시 헤더에 포함
+const response = await fetch('/api/v1/protected-endpoint', {
+    method: 'GET',
+    headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    }
+});
+
+// 토큰 만료 시 자동 갱신
+if (response.status === 401) {
+    const refreshToken = localStorage.getItem('refresh_token');
+    const refreshResponse = await fetch('/api/v1/auth/refresh', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${refreshToken}`,
+            'Content-Type': 'application/json'
+        }
+    });
+    
+    if (refreshResponse.ok) {
+        const { access_token } = await refreshResponse.json();
+        localStorage.setItem('access_token', access_token);
+        // 원래 요청 재시도
+    }
+}
+```
+
+### 9. 토큰 디버깅 및 테스트
+
+#### 토큰 내용 확인 (개발용)
+```python
+# backend/utils/debug.py (개발 환경 전용)
+import jwt
+import json
+from backend.config.settings import JWT_SECRET_KEY, JWT_ALGORITHM
+
+def decode_token_debug(token: str) -> dict:
+    """개발용: 토큰 내용 디코딩"""
+    try:
+        payload = jwt.decode(
+            token, 
+            JWT_SECRET_KEY, 
+            algorithms=[JWT_ALGORITHM],
+            options={"verify_exp": False}  # 만료 검증 비활성화
+        )
+        return {
+            "valid": True,
+            "payload": payload,
+            "expires_at": datetime.fromtimestamp(payload['exp']).isoformat(),
+            "token_type": payload.get('type'),
+            "user_id": payload.get('sub')
+        }
+    except Exception as e:
+        return {
+            "valid": False,
+            "error": str(e)
+        }
+
+# 디버그 엔드포인트 (개발환경만)
+@router.post("/debug/token")
+def debug_token(token_data: dict):
+    """개발용: 토큰 정보 확인"""
+    if ENVIRONMENT != "development":
+        raise HTTPException(status_code=404)
+    
+    token = token_data.get("token")
+    return decode_token_debug(token)
+```
+
+#### 토큰 테스트 코드
+```python
+# tests/test_jwt.py
+import pytest
+from backend.utils.jwt_utils import create_access_token, verify_token
+from backend.middleware.auth import verify_token as middleware_verify_token
+
+def test_token_creation():
+    """토큰 생성 테스트"""
+    token_data = {"sub": "123", "email": "test@example.com"}
+    token = create_access_token(token_data)
+    
+    assert token is not None
+    assert isinstance(token, str)
+
+def test_token_verification():
+    """토큰 검증 테스트"""
+    token_data = {"sub": "123", "email": "test@example.com"}
+    token = create_access_token(token_data)
+    
+    payload = verify_token(token)
+    assert payload["sub"] == "123"
+    assert payload["email"] == "test@example.com"
+    assert payload["type"] == "access"
+
+def test_expired_token():
+    """만료된 토큰 테스트"""
+    # 과거 시간으로 토큰 생성하여 테스트
+    pass
+```
+
+### 10. 보안 체크리스트
+
+#### ✅ JWT 보안 점검사항
+- [ ] JWT 시크릿 키가 충분히 복잡한가?
+- [ ] 프로덕션에서 환경변수로 관리되는가?
+- [ ] 액세스 토큰 만료시간이 적절한가? (너무 길지 않은가?)
+- [ ] 리프레시 토큰이 안전하게 저장되는가?
+- [ ] 로그아웃 시 토큰이 무효화되는가?
+- [ ] 민감한 정보가 토큰에 포함되지 않는가?
+
+```python
+# 보안 강화 예시
+@router.post("/auth/logout")
+def logout(
+    current_user: User = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """로그아웃 - 토큰 블랙리스트 추가"""
+    # 실제로는 Redis 등을 사용하여 토큰 블랙리스트 관리
+    # 또는 데이터베이스에 토큰 무효화 테이블 생성
+    
+    return {"message": "로그아웃 성공"}
+```
 
 ---
 
