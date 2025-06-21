@@ -15,7 +15,7 @@ class TaskCreateRequest(BaseModel):
     status: Optional[str] = None  # 업무 상태
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class TaskUpdateRequest(BaseModel):
     title: Optional[str] = None
@@ -29,9 +29,10 @@ class TaskUpdateRequest(BaseModel):
     is_parent_task: Optional[bool] = None  # 상위업무 여부
     member_ids: Optional[List[int]] = None  # 업무 멤버 ID 리스트
     tag_names: Optional[List[str]] = None  # 태그 목록
-
+    status: Optional[str] = None  # 업무 상태
+    
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class TaskResponse(BaseModel):
     task_id: int
@@ -52,4 +53,4 @@ class TaskResponse(BaseModel):
     tag_names: Optional[List[str]] = []  # 태그 목록
     
     class Config:
-        orm_mode = True
+        from_attributes = True

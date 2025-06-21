@@ -11,6 +11,7 @@ from backend.models.task import TaskMember
 from backend.models.project import Project, ProjectMember
 from backend.models.tag import Tag, TaskTag
 from backend.schemas.Task import TaskCreateRequest, TaskUpdateRequest, TaskResponse
+from backend.models.logs_notification import ActivityLog
 
 router = APIRouter(prefix="/api/v1")
 
@@ -169,7 +170,7 @@ async def create_task(
                     detail=f"태그 '{tag_name}'이 해당 프로젝트에 존재하지 않습니다."
                 )
 
-    # 8) tasks 테이블에 새 업무 저장 (assignee_id는 프론트에서 받은 값 사용)
+    # 8) tasks 테이블에 새 업무 저장
     task = TaskModel(
         title           = task_in.title,
         project_id      = task_in.project_id,
@@ -178,7 +179,7 @@ async def create_task(
         due_date        = task_in.due_date,
         priority        = task_in.priority,
         assignee_id     = task_in.assignee_id,
-        status          = status_value,  # status 필드 자동 설정
+        status          = status_value,
         is_parent_task  = task_in.is_parent_task,
     )
     db.add(task)
@@ -201,10 +202,20 @@ async def create_task(
             )
             db.add(task_tag)
     
+    # 11) ActivityLog에 기록 추가
+    log = ActivityLog(
+        user_id=current_user.user_id,
+        entity_type="task",
+        entity_id=task.task_id,
+        action="create",
+        project_id=task.project_id
+    )
+    db.add(log)
+    
+    # 12) 모든 DB 변경사항을 한 번에 커밋
     db.commit()
     
-    
-    # 11) 생성된 Task 객체를 TaskResponse 형태로 반환 (assignee_name 포함)
+    # 13) 생성된 Task 객체를 TaskResponse 형태로 반환
     # task_members 조회
     task_members = db.query(TaskMember).filter(TaskMember.task_id == task.task_id).all()
     member_ids = [tm.user_id for tm in task_members]
