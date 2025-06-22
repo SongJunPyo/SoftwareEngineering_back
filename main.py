@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.routers import auth, oauth, workspace, project, project_order, notifications, project_members, workspace_project_order, user_setting, task, task_project_member, comment, user_delete, user_password, dashboard
 from backend.routers import tag as tag_router
 from backend.routers import user_profile
+from backend.websocket import websocket_router
 from backend.database.base import engine, check_db_connection
 from backend.models import user, workspace as workspace_model, project as project_model, project_invitation, logs_notification, workspace_project_order as wpo_model, user_setting as user_setting_model, tag, task as task_model
 from backend.routers import deadline_notification
@@ -58,6 +59,7 @@ app.include_router(user_delete.router)
 app.include_router(user_password.router)
 app.include_router(user_profile.router)
 app.include_router(dashboard.router)     # 대시보드 데이터
+app.include_router(websocket_router.router)  # WebSocket 실시간 통신
 
 @app.get("/")
 def read_root():
