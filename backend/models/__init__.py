@@ -5,3 +5,4 @@ from .workspace import Workspace
 from .comment_file import Comment, File
 from .logs_notification import ActivityLog, Notification
 from .tag import Tag
+from .tag import TaskTag

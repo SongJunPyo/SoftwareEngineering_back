@@ -11,39 +11,9 @@ from backend.models.task import TaskMember
 from backend.models.project import Project, ProjectMember
 from backend.models.tag import Tag, TaskTag
 from backend.schemas.Task import TaskCreateRequest, TaskUpdateRequest, TaskResponse
+from backend.models.logs_notification import ActivityLog
 
 router = APIRouter(prefix="/api/v1")
-
-def can_modify_task(task, current_user, db: Session):
-    """
-    Check if current user can modify/delete the given task.
-    Rules:
-    - Task assignee can always modify their own tasks
-    - Project owners and admins can modify any task in their projects
-    - Project members can only modify their own assigned tasks
-    - Viewers cannot modify any tasks (blocked elsewhere)
-    """
-    # If user is the task assignee, they can modify it
-    if task.assignee_id == current_user.user_id:
-        return True
-    
-    # Check user's role in the project
-    project_member = db.query(ProjectMember).filter(
-        ProjectMember.project_id == task.project_id,
-        ProjectMember.user_id == current_user.user_id
-    ).first()
-    
-    # User must be a project member
-    if not project_member:
-        return False
-    
-    # Owners and admins can modify any task in their projects
-    if project_member.role in ['owner', 'admin']:
-        return True
-    
-    # Members can only modify their own assigned tasks (already checked above)
-    # Viewers cannot modify any tasks (will be blocked by viewer check)
-    return False
 
 @router.post(
     "/tasks",
@@ -169,7 +139,7 @@ async def create_task(
                     detail=f"태그 '{tag_name}'이 해당 프로젝트에 존재하지 않습니다."
                 )
 
-    # 8) tasks 테이블에 새 업무 저장 (assignee_id는 프론트에서 받은 값 사용)
+    # 8) tasks 테이블에 새 업무 저장
     task = TaskModel(
         title           = task_in.title,
         project_id      = task_in.project_id,
@@ -178,7 +148,7 @@ async def create_task(
         due_date        = task_in.due_date,
         priority        = task_in.priority,
         assignee_id     = task_in.assignee_id,
-        status          = status_value,  # status 필드 자동 설정
+        status          = status_value,
         is_parent_task  = task_in.is_parent_task,
     )
     db.add(task)
@@ -201,10 +171,20 @@ async def create_task(
             )
             db.add(task_tag)
     
+    # 11) ActivityLog에 기록 추가
+    log = ActivityLog(
+        user_id=current_user.user_id,
+        entity_type="task",
+        entity_id=task.task_id,
+        action="create",
+        project_id=task.project_id
+    )
+    db.add(log)
+    
+    # 12) 모든 DB 변경사항을 한 번에 커밋
     db.commit()
     
-    
-    # 11) 생성된 Task 객체를 TaskResponse 형태로 반환 (assignee_name 포함)
+    # 13) 생성된 Task 객체를 TaskResponse 형태로 반환
     # task_members 조회
     task_members = db.query(TaskMember).filter(TaskMember.task_id == task.task_id).all()
     member_ids = [tm.user_id for tm in task_members]
@@ -319,19 +299,19 @@ async def update_task(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="업무를 찾을 수 없습니다.")
 
-    # 권한 검증: 담당자, 프로젝트 소유자, 관리자만 수정 가능
-    if not can_modify_task(task, current_user, db):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="해당 업무를 수정할 권한이 없습니다. 담당자이거나 프로젝트 소유자/관리자여야 합니다."
-        )
-    
-    # 뷰어 권한 체크 - 뷰어는 업무 수정 불가
+    # 권한 검증: Task의 담당자 또는 프로젝트 멤버만 수정 가능
     project_member = db.query(ProjectMember).filter(
         ProjectMember.project_id == task.project_id,
         ProjectMember.user_id == current_user.user_id
     ).first()
     
+    if task.assignee_id != current_user.user_id and not project_member:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="해당 업무의 담당자 또는 프로젝트 멤버만 수정할 수 있습니다."
+        )
+    
+    # 뷰어 권한 체크 - 뷰어는 업무 수정 불가
     if project_member and project_member.role == 'viewer':
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -515,23 +495,11 @@ async def delete_task(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="업무를 찾을 수 없습니다.")
 
-    # 권한 검증: 담당자, 프로젝트 소유자, 관리자만 삭제 가능
-    if not can_modify_task(task, current_user, db):
+    # 권한 검증: Task의 담당자만 삭제 가능
+    if task.assignee_id != current_user.user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
-            detail="해당 업무를 삭제할 권한이 없습니다. 담당자이거나 프로젝트 소유자/관리자여야 합니다."
-        )
-    
-    # 뷰어 권한 체크 - 뷰어는 업무 삭제 불가
-    project_member = db.query(ProjectMember).filter(
-        ProjectMember.project_id == task.project_id,
-        ProjectMember.user_id == current_user.user_id
-    ).first()
-    
-    if project_member and project_member.role == 'viewer':
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="뷰어는 업무를 삭제할 수 없습니다."
+            detail="해당 업무의 담당자만 삭제할 수 있습니다."
         )
     
     # 하위 업무 존재 여부 확인 - 하위 업무가 있는 상위 업무는 삭제 불가
@@ -616,20 +584,20 @@ async def update_task_status(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="업무를 찾을 수 없습니다.")
 
-    # 권한 검증: 담당자, 프로젝트 소유자, 관리자만 상태 변경 가능
-    if not can_modify_task(task, current_user, db):
+    # 권한 검증: Task의 담당자만 상태 변경 가능
+    if task.assignee_id != current_user.user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
-            detail="해당 업무의 상태를 변경할 권한이 없습니다. 담당자이거나 프로젝트 소유자/관리자여야 합니다."
+            detail="해당 업무의 담당자만 상태를 변경할 수 있습니다."
         )
     
     # 뷰어 권한 체크 - 뷰어는 업무 상태 변경 불가
-    project_member = db.query(ProjectMember).filter(
+    assignee_member = db.query(ProjectMember).filter(
         ProjectMember.project_id == task.project_id,
         ProjectMember.user_id == current_user.user_id
     ).first()
     
-    if project_member and project_member.role == 'viewer':
+    if assignee_member and assignee_member.role == 'viewer':
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="뷰어는 업무 상태를 변경할 수 없습니다."

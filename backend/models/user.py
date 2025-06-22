@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from backend.database.base import Base
 
@@ -14,5 +14,7 @@ class User(Base):
     role = Column(Integer, nullable=False, default=3)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    email_notifications_enabled = Column(Boolean, nullable=False, default=True)
+    notification_email = Column(String, nullable=True)
 
     tasks = relationship("Task", back_populates="assignee")

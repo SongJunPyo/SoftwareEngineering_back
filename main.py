@@ -1,9 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routers import auth, oauth, workspace, project, project_order, notifications, project_members, workspace_project_order, user_setting, task, task_project_member, comment
+from backend.routers import auth, oauth, workspace, project, project_order, notifications, project_members, workspace_project_order, user_setting, task, task_project_member, comment, user_delete, user_password, dashboard
 from backend.routers import tag as tag_router
+from backend.routers import user_profile
 from backend.database.base import engine, check_db_connection
 from backend.models import user, workspace as workspace_model, project as project_model, project_invitation, logs_notification, workspace_project_order as wpo_model, user_setting as user_setting_model, tag, task as task_model
+from backend.routers import deadline_notification
+from backend.routers import logs
 
 # 데이터베이스 연결 확인
 check_db_connection()
@@ -18,6 +21,7 @@ wpo_model.Base.metadata.create_all(bind=engine)
 user_setting_model.Base.metadata.create_all(bind=engine)
 tag.Base.metadata.create_all(bind=engine)
 task_model.Base.metadata.create_all(bind=engine)
+
 
 app = FastAPI(
     title="Software Engineering Backend API",
@@ -49,6 +53,11 @@ app.include_router(task.router)          # 업무(Task) CRUD
 app.include_router(task_project_member.router) # 프로젝트 멤버 관리
 app.include_router(comment.router)        # 댓글 관리
 app.include_router(tag_router.router)     # 태그 관리
+app.include_router(logs.router)
+app.include_router(user_delete.router)
+app.include_router(user_password.router)
+app.include_router(user_profile.router)
+app.include_router(dashboard.router)     # 대시보드 데이터
 
 @app.get("/")
 def read_root():

@@ -1,23 +1,21 @@
 from pydantic import BaseModel
 from typing import List, Optional
 
-class TagCreateRequest(BaseModel):
+class TagBase(BaseModel):
     tag_name: str
+
+class TagCreateRequest(TagBase):
     project_id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
-class TagUpdateRequest(BaseModel):
-    tag_name: str
+class TagUpdateRequest(TagBase):
+    pass
 
-    class Config:
-        orm_mode = True
-
-class TagResponse(BaseModel):
+class TagResponse(TagBase):
     project_id: int
-    tag_name: str
-
+    
     class Config:
         orm_mode = True
 
@@ -26,11 +24,11 @@ class TaskTagCreateRequest(BaseModel):
     tag_names: List[str]  # Multiple tags can be assigned to a task
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class TaskTagResponse(BaseModel):
     task_id: int
     tag_name: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
