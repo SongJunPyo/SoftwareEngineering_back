@@ -301,8 +301,8 @@ ALTER TABLE IF EXISTS public.tasks
 ALTER TABLE IF EXISTS public.tasks
     ADD CONSTRAINT tasks_parent_task_id_fkey FOREIGN KEY (parent_task_id)
     REFERENCES public.tasks (task_id) MATCH SIMPLE
-    ON UPDATE NO ACTION
-    ON DELETE SET NULL;
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT;
 
 
 ALTER TABLE IF EXISTS public.tasks
