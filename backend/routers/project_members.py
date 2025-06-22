@@ -11,6 +11,7 @@ from backend.models.project import ProjectMember, Project
 from backend.models.user import User
 from backend.models.workspace import Workspace
 from backend.models.workspace_project_order import WorkspaceProjectOrder
+from backend.routers.notifications import create_notification
 
 router = APIRouter(prefix="/api/v1/projects", tags=["project_members"])
 
@@ -83,6 +84,19 @@ async def invite_user(
         status="pending"
     )
     db.add(invitation)
+    db.flush()
+
+    # 알림 생성 (초대받은 사람이 회원일 경우)
+    if invited_user:
+        await create_notification(
+            db=db,
+            user_id=invited_user.user_id,
+            type="invitation",
+            message=f"'{project.title}' 프로젝트에 초대되었습니다.",
+            channel="invitation",
+            related_id=invitation.project_inv_id
+        )
+
     db.commit()
     
     # 이메일 전송 (백그라운드 작업)
@@ -229,7 +243,20 @@ async def accept_invitation(
         role=invitation.role
     )
     db.add(new_member)
+    db.flush()
     
+    # 알림 생성 (초대자에게)
+    project = db.query(Project).filter(Project.project_id == invitation.project_id).first()
+    if project and invitation.invited_by:
+        await create_notification(
+            db=db,
+            user_id=invitation.invited_by,
+            type='project',
+            message=f"'{current_user.name}'님이 '{project.title}' 프로젝트 초대를 수락했습니다.",
+            channel='project',
+            related_id=project.project_id
+        )
+
     # 4. 선택된 워크스페이스에 프로젝트 추가
     # 워크스페이스 권한 확인 (사용자가 소유한 워크스페이스인지)
     workspace = db.query(Workspace).filter(
@@ -365,6 +392,8 @@ async def get_project_members(
         User, ProjectMember.user_id == User.user_id
     ).filter(ProjectMember.project_id == project_id).all()
     
+    print(f"--- [DEBUG] Project ID: {project_id}, Fetched members count: {len(members)} ---")
+
     member_list = []
     for member, user in members:
         member_list.append({
@@ -374,6 +403,8 @@ async def get_project_members(
             "role": member.role
         })
     
+    print(f"--- [DEBUG] Returning member list: {member_list} ---")
+
     return {"members": member_list}
 
 @router.delete("/{project_id}/members/{user_id}")

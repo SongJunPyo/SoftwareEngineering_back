@@ -1,25 +1,23 @@
 from pydantic import BaseModel
 from typing import List, Optional
 
-class TagCreateRequest(BaseModel):
+class TagBase(BaseModel):
     tag_name: str
+
+class TagCreateRequest(TagBase):
     project_id: int
 
     class Config:
         from_attributes = True
 
-class TagUpdateRequest(BaseModel):
-    tag_name: str
+class TagUpdateRequest(TagBase):
+    pass
 
-    class Config:
-        from_attributes = True
-
-class TagResponse(BaseModel):
+class TagResponse(TagBase):
     project_id: int
-    tag_name: str
-
+    
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 class TaskTagCreateRequest(BaseModel):
     task_id: int

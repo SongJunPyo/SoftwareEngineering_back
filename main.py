@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routers import auth, oauth, workspace, project, project_order, notifications, project_members, workspace_project_order, user_setting, task, task_project_member, comment, user_delete, user_password
+from backend.routers import auth, oauth, workspace, project, project_order, notifications, project_members, workspace_project_order, user_setting, task, task_project_member, comment, user_delete, user_password, dashboard
 from backend.routers import tag as tag_router
 from backend.routers import user_profile
 from backend.database.base import engine, check_db_connection
@@ -21,6 +21,7 @@ wpo_model.Base.metadata.create_all(bind=engine)
 user_setting_model.Base.metadata.create_all(bind=engine)
 tag.Base.metadata.create_all(bind=engine)
 task_model.Base.metadata.create_all(bind=engine)
+
 
 app = FastAPI(
     title="Software Engineering Backend API",
@@ -56,6 +57,7 @@ app.include_router(logs.router)
 app.include_router(user_delete.router)
 app.include_router(user_password.router)
 app.include_router(user_profile.router)
+app.include_router(dashboard.router)     # 대시보드 데이터
 
 @app.get("/")
 def read_root():

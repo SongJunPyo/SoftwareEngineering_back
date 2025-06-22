@@ -14,3 +14,4 @@ class TaskTag(Base):
 
     task_id = Column(Integer, ForeignKey("tasks.task_id", ondelete="CASCADE"), primary_key=True)
     tag_name = Column(Text, nullable=False, primary_key=True)
+

@@ -36,7 +36,10 @@ def get_user_settings(
         "email": user_setting.email,
         "nickname": user_setting.nickname,
         "bio": user_setting.bio,
-        "img_path": user_setting.img_path
+        "img_path": user_setting.img_path,
+        # 알림 설정 추가
+        "email_notifications_enabled": current_user.email_notifications_enabled,
+        "notification_email": current_user.notification_email
     }
 
 @router.put("/")
@@ -79,15 +82,29 @@ def update_user_settings(
     if img_path is not None:
         user_setting.img_path = img_path
     
+    # 알림 설정 업데이트
+    email_notifications_enabled = data.get("email_notifications_enabled")
+    notification_email = data.get("notification_email")
+    
+    if email_notifications_enabled is not None:
+        current_user.email_notifications_enabled = email_notifications_enabled
+    
+    if notification_email is not None:
+        current_user.notification_email = notification_email
+    
     db.commit()
     db.refresh(user_setting)
+    db.refresh(current_user)
     
     return {
         "user_id": user_setting.user_id,
         "email": user_setting.email,
         "nickname": user_setting.nickname,
         "bio": user_setting.bio,
-        "img_path": user_setting.img_path
+        "img_path": user_setting.img_path,
+        # 알림 설정 추가
+        "email_notifications_enabled": current_user.email_notifications_enabled,
+        "notification_email": current_user.notification_email
     }
 
 @router.delete("/")
@@ -106,8 +123,14 @@ def reset_user_settings(
         user_setting.nickname = current_user.name
         user_setting.bio = None
         user_setting.img_path = None
+    
+    # 알림 설정도 기본값으로 리셋
+    current_user.email_notifications_enabled = True
+    current_user.notification_email = None
         
-        db.commit()
+    db.commit()
+    if user_setting:
         db.refresh(user_setting)
+    db.refresh(current_user)
     
     return {"message": "사용자 설정이 초기화되었습니다."}
