@@ -1,0 +1,11 @@
+fastapi==0.104.1
+sqlalchemy==2.0.23
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+bcrypt==4.1.2
+pyjwt==2.8.0
+python-dotenv==1.0.0
+fastapi-mail==1.4.1
+pydantic[email]==2.5.1
+requests==2.31.0
+apscheduler==3.10.4
