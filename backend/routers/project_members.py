@@ -481,7 +481,62 @@ async def remove_project_member(
         if admin_count == 0:
             raise HTTPException(status_code=400, detail="마지막 관리자는 제거할 수 없습니다")
     
+    # 제거할 사용자의 워크스페이스 목록 조회
+    user_workspaces = db.query(Workspace).filter(Workspace.user_id == user_id).all()
+    
+    # 각 워크스페이스에서 해당 프로젝트 제거
+    for workspace in user_workspaces:
+        workspace_project = db.query(WorkspaceProjectOrder).filter(
+            WorkspaceProjectOrder.workspace_id == workspace.workspace_id,
+            WorkspaceProjectOrder.project_id == project_id
+        ).first()
+        
+        if workspace_project:
+            db.delete(workspace_project)
+    
+    # ProjectMember에서 제거
     db.delete(target_member)
+    
+    # 프로젝트 정보 조회 (알림용)
+    project = db.query(Project).filter(Project.project_id == project_id).first()
+    
+    # 제거된 사용자에게 알림 생성
+    if project:
+        try:
+            # 현재 사용자 정보 가져오기
+            actor_user = db.query(User).filter(User.user_id == current_user.user_id).first()
+            actor_name = actor_user.name if actor_user else "Unknown"
+            
+            # 제거된 사용자에게 알림 전송
+            await create_project_notification(
+                db=db,
+                user_id=user_id,
+                project_id=project_id,
+                project_name=project.title,
+                notification_type="project_member_removed",
+                actor_name=actor_name
+            )
+            
+            # WebSocket 이벤트 발행 - 프로젝트 멤버 제거
+            try:
+                from backend.websocket.events import event_emitter
+                target_user = db.query(User).filter(User.user_id == user_id).first()
+                
+                await event_emitter.emit_project_member_removed(
+                    project_id=project_id,
+                    workspace_id=0,  # 모든 워크스페이스에서 제거되므로 0으로 설정
+                    project_name=project.title,
+                    member_id=user_id,
+                    member_name=target_user.name if target_user else "Unknown User",
+                    removed_by=current_user.user_id
+                )
+            except Exception as e:
+                print(f"WebSocket 프로젝트 멤버 제거 이벤트 발행 실패: {str(e)}")
+                
+        except Exception as e:
+            print(f"멤버 제거 알림 생성 실패: {str(e)}")
+            # 알림 실패는 전체 제거를 막지 않음
+    
     db.commit()
     
     return {"message": "멤버가 성공적으로 제거되었습니다"}

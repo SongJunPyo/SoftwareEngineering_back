@@ -220,6 +220,7 @@ async def create_project_notification(
     type_messages = {
         "project_invited": f"'{project_name}' 프로젝트에 초대되었습니다.",
         "project_member_added": f"'{project_name}' 프로젝트 멤버로 추가되었습니다.",
+        "project_member_removed": f"'{project_name}' 프로젝트에서 제거되었습니다.",
         "project_updated": f"'{project_name}' 프로젝트가 업데이트되었습니다.",
         "project_deleted": f"'{project_name}' 프로젝트가 삭제되었습니다.",
         "project_member_role_changed": f"'{project_name}' 프로젝트에서 권한이 변경되었습니다."
@@ -229,6 +230,7 @@ async def create_project_notification(
         type_messages.update({
             "project_invited": f"{actor_name}님이 '{project_name}' 프로젝트에 초대했습니다.",
             "project_member_added": f"{actor_name}님이 회원님을 '{project_name}' 프로젝트에 추가했습니다.",
+            "project_member_removed": f"{actor_name}님이 회원님을 '{project_name}' 프로젝트에서 제거했습니다.",
             "project_updated": f"{actor_name}님이 '{project_name}' 프로젝트를 업데이트했습니다.",
             "project_deleted": f"{actor_name}님이 '{project_name}' 프로젝트를 삭제했습니다.",
             "project_member_role_changed": f"{actor_name}님이 '{project_name}' 프로젝트에서 회원님의 권한을 변경했습니다."

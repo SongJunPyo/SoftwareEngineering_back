@@ -1,11 +1,19 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 import re
 
 class RegisterRequest(BaseModel):
-    email: EmailStr = Field(..., example="user@example.com")
+    email: str = Field(..., example="user@example.com")
     password: str = Field(..., min_length=8, example="password123")
     password_confirm: str = Field(..., min_length=8, example="password123")
     name: str = Field(..., example="홍길동")
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, email):
+        email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_regex, email):
+            raise ValueError("올바른 이메일 형식을 입력해주세요.")
+        return email
 
     @field_validator("password_confirm")
     @classmethod
@@ -29,5 +37,13 @@ class RegisterRequest(BaseModel):
         return password
 
 class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
+    email: str = Field(..., example="user@example.com")
+    password: str = Field(..., example="password123")
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, email):
+        email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_regex, email):
+            raise ValueError("올바른 이메일 형식을 입력해주세요.")
+        return email
