@@ -15,6 +15,8 @@ router = APIRouter(prefix="/api/v1/oauth", tags=["OAuth"])
 def kakao_oauth(data: dict, db: Session = Depends(get_db)):
     """카카오 OAuth 로그인"""
     code = data.get("code")
+    name = data.get("name")  # 새 사용자의 경우 필요한 이름
+    
     if not code:
         raise HTTPException(status_code=400, detail="카카오 인증 코드가 없습니다.")
 
@@ -44,7 +46,6 @@ def kakao_oauth(data: dict, db: Session = Depends(get_db)):
         
         kakao_info = user_res.json()
         kakao_email = kakao_info.get("kakao_account", {}).get("email")
-        kakao_name = kakao_info.get("properties", {}).get("nickname", "카카오사용자")
 
         if not kakao_email:
             raise HTTPException(status_code=400, detail="카카오 계정에 이메일이 없습니다.")
@@ -72,11 +73,18 @@ def kakao_oauth(data: dict, db: Session = Depends(get_db)):
                 "name": user.name
             }
         else:
-            # 신규 회원: 바로 가입 처리
+            # 신규 회원: 이름이 필요함
+            if not name:
+                # Create a custom exception with structured data
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"SIGNUP_REQUIRED:{kakao_email}"
+                )
+            
             new_user = User(
                 email=kakao_email,
                 password="",  # 소셜 로그인은 비밀번호 없음
-                name=kakao_name,
+                name=name,
                 provider="kakao"
             )
             db.add(new_user)
