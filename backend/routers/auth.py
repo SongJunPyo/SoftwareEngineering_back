@@ -148,7 +148,7 @@ def send_password_reset_email(recipient_email: str, temporary_password: str):
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-def register_user(register_data: RegisterRequest, db: Session = Depends(get_db)):
+async def register_user(register_data: RegisterRequest, db: Session = Depends(get_db)):
     """일반 회원가입 (이메일 인증 필요)"""
     existing_user = db.query(User).filter(User.email == register_data.email).first()
     if existing_user:
@@ -181,6 +181,17 @@ def register_user(register_data: RegisterRequest, db: Session = Depends(get_db))
     )
     db.add(default_workspace)
 
+    # 환영 메시지 알림 생성
+    from backend.routers.notifications import create_notification
+    await create_notification(
+        db=db,
+        user_id=new_user.user_id,
+        type="welcome_message",
+        message=f"안녕하세요 {new_user.name}님! Planora에 오신 것을 환영합니다. 프로젝트 관리의 새로운 경험을 시작해보세요.",
+        channel="system",
+        related_id=None
+    )
+
     try:
         send_verification_email(new_user.email, verification_token)
         db.commit()
@@ -193,7 +204,7 @@ def register_user(register_data: RegisterRequest, db: Session = Depends(get_db))
 
 
 @router.post("/verify-email")
-def verify_email_and_login(data: VerificationToken, db: Session = Depends(get_db)):
+async def verify_email_and_login(data: VerificationToken, db: Session = Depends(get_db)):
     """이메일 토큰을 검증하고 사용자를 활성화한 뒤, 자동 로그인 처리"""
     token = data.token
     user = db.query(User).filter(User.email_verification_token == token).first()
@@ -222,6 +233,18 @@ def verify_email_and_login(data: VerificationToken, db: Session = Depends(get_db
     user.email_verification_token = None
     user.email_verification_token_expires_at = None
     user.role = "member" # 이메일 인증 시 'member' 등급으로 승격
+    
+    # 계정 인증 완료 알림 생성
+    from backend.routers.notifications import create_notification
+    await create_notification(
+        db=db,
+        user_id=user.user_id,
+        type="account_verification",
+        message=f"{user.name}님의 계정 인증이 완료되었습니다. 이제 Planora의 모든 기능을 사용하실 수 있습니다.",
+        channel="system",
+        related_id=None
+    )
+    
     db.commit()
     db.refresh(user)
 

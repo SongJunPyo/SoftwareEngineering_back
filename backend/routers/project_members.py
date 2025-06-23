@@ -11,7 +11,7 @@ from backend.models.project import ProjectMember, Project
 from backend.models.user import User
 from backend.models.workspace import Workspace
 from backend.models.workspace_project_order import WorkspaceProjectOrder
-from backend.routers.notifications import create_notification
+from backend.routers.notifications import create_notification, create_project_notification
 
 router = APIRouter(prefix="/api/v1/projects", tags=["project_members"])
 
@@ -245,17 +245,45 @@ async def accept_invitation(
     db.add(new_member)
     db.flush()
     
-    # 알림 생성 (초대자에게)
+    # 프로젝트 정보 조회
     project = db.query(Project).filter(Project.project_id == invitation.project_id).first()
+    
+    # 새로 추가된 멤버에게 알림 생성
+    if project:
+        await create_project_notification(
+            db=db,
+            user_id=current_user.user_id,
+            project_id=project.project_id,
+            project_name=project.title,
+            notification_type="project_member_added",
+            actor_name=None  # 자신이 수락한 것이므로 actor 없음
+        )
+    
+    # 알림 생성 (초대자에게)
     if project and invitation.invited_by:
         await create_notification(
             db=db,
             user_id=invitation.invited_by,
-            type='project',
+            type='invitation_accepted',
             message=f"'{current_user.name}'님이 '{project.title}' 프로젝트 초대를 수락했습니다.",
             channel='project',
             related_id=project.project_id
         )
+        
+        # WebSocket 이벤트 발행 - 프로젝트 멤버 추가
+        try:
+            from backend.websocket.events import event_emitter
+            await event_emitter.emit_project_member_added(
+                project_id=project.project_id,
+                workspace_id=request.workspace_id,  # 선택한 워크스페이스 ID 사용
+                project_name=project.title,
+                member_id=current_user.user_id,
+                member_name=current_user.name,
+                role=invitation.role,
+                added_by=invitation.invited_by
+            )
+        except Exception as e:
+            print(f"WebSocket 프로젝트 멤버 추가 이벤트 발행 실패: {str(e)}")
 
     # 4. 선택된 워크스페이스에 프로젝트 추가
     # 워크스페이스 권한 확인 (사용자가 소유한 워크스페이스인지)
@@ -490,9 +518,13 @@ async def update_member_role(
     if not target_member:
         raise HTTPException(status_code=404, detail="멤버를 찾을 수 없습니다")
     
-    # 🔒 소유자/관리자는 권한 변경 불가 (멤버/뷰어만 가능)
-    if target_member.role in ["owner", "admin"]:
-        raise HTTPException(status_code=400, detail="소유자와 관리자의 권한은 변경할 수 없습니다")
+    # 🔒 소유자 권한은 변경 불가, 관리자 권한은 소유자만 변경 가능
+    if target_member.role == "owner":
+        raise HTTPException(status_code=400, detail="다른 소유자의 권한은 변경할 수 없습니다")
+    
+    # 🔒 관리자 권한 변경은 소유자만 가능
+    if target_member.role == "admin" and current_member.role != "owner":
+        raise HTTPException(status_code=403, detail="소유자만 관리자의 권한을 변경할 수 있습니다")
     
     # 🔒 관리자는 admin/owner 권한 부여 불가
     if current_member.role == "admin" and new_role in ["admin", "owner"]:
@@ -506,9 +538,13 @@ async def update_member_role(
         if target_member.role == "owner":
             raise HTTPException(status_code=400, detail="이미 소유자입니다")
         
-        # 소유권 이전: 새 소유자로 변경, 기존 소유자는 관리자로
-        current_member.role = "admin"
-        target_member.role = "owner"
+        # 소유권 이전: 프로젝트 테이블과 멤버 테이블 모두 업데이트
+        project = db.query(Project).filter(Project.project_id == project_id).first()
+        if project:
+            project.owner_id = user_id  # 프로젝트 테이블의 소유자 변경
+        
+        current_member.role = "admin"  # 기존 소유자는 관리자로
+        target_member.role = "owner"   # 새 소유자로 변경
     elif new_role == "admin":
         # 🔒 관리자 권한 부여는 소유자만 가능
         if current_member.role != "owner":
@@ -520,6 +556,65 @@ async def update_member_role(
         target_member.role = new_role
     
     db.commit()
+    
+    # 권한 변경 알림 생성
+    try:
+        # 현재 사용자 정보 가져오기
+        actor_user = db.query(User).filter(User.user_id == current_user.user_id).first()
+        actor_name = actor_user.name if actor_user else "Unknown"
+        
+        # 프로젝트 정보 가져오기
+        project = db.query(Project).filter(Project.project_id == project_id).first()
+        project_name = project.title if project else "Unknown Project"
+        
+        # 대상 사용자 정보 가져오기
+        target_user = db.query(User).filter(User.user_id == user_id).first()
+        target_user_name = target_user.name if target_user else "Unknown User"
+        
+        # 대상 사용자에게 알림 전송
+        await create_project_notification(
+            db=db,
+            user_id=user_id,
+            project_id=project_id,
+            project_name=project_name,
+            notification_type="project_member_role_changed",
+            actor_name=actor_name
+        )
+        
+        # 프로젝트의 다른 관리자/소유자들에게도 알림 (선택적)
+        admin_members = db.query(ProjectMember).filter(
+            ProjectMember.project_id == project_id,
+            ProjectMember.role.in_(["owner", "admin"]),
+            ProjectMember.user_id != current_user.user_id,  # 자기 제외
+            ProjectMember.user_id != user_id  # 대상 사용자 제외
+        ).all()
+        
+        for admin_member in admin_members:
+            # 관리자들에게는 대상 사용자 정보가 포함된 알림 전송
+            custom_message = f"{actor_name}님이 {target_user_name}님의 권한을 {new_role}로 변경했습니다."
+            await create_notification(
+                db=db,
+                user_id=admin_member.user_id,
+                type="project_member_role_changed",
+                message=custom_message,
+                channel="project",
+                related_id=project_id
+            )
+        
+        # WebSocket 이벤트 발행
+        from backend.websocket.events import event_emitter
+        await event_emitter.emit_notification(
+            notification_id=0,  # 임시값
+            recipient_id=user_id,
+            title="멤버 권한 변경",
+            message=f"'{project_name}' 프로젝트에서 권한이 {new_role}로 변경되었습니다.",
+            notification_type="project_member_role_changed",
+            related_id=project_id
+        )
+        
+    except Exception as e:
+        print(f"멤버 권한 변경 알림 생성 실패: {str(e)}")
+        # 알림 실패는 전체 권한 변경을 막지 않음
     
     return {"message": f"권한이 {new_role}로 변경되었습니다"}
 
@@ -667,6 +762,18 @@ async def reject_invitation(
     # 3. 초대장 상태 업데이트
     invitation.status = "rejected"
     invitation.accepted_at = datetime.now(timezone.utc)  # 처리 시간 기록 (수락/거절 공통)
+    
+    # 알림 생성 (초대자에게)
+    project = db.query(Project).filter(Project.project_id == invitation.project_id).first()
+    if project and invitation.invited_by:
+        await create_notification(
+            db=db,
+            user_id=invitation.invited_by,
+            type='invitation_declined',
+            message=f"'{current_user.name}'님이 '{project.title}' 프로젝트 초대를 거절했습니다.",
+            channel='project',
+            related_id=project.project_id
+        )
     
     db.commit()
     return {"message": "초대를 거절했습니다"}

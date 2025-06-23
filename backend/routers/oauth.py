@@ -72,11 +72,39 @@ def kakao_oauth(data: dict, db: Session = Depends(get_db)):
                 "name": user.name
             }
         else:
-            # 신규 회원: 추가 정보 필요
+            # 신규 회원: 바로 가입 처리
+            new_user = User(
+                email=kakao_email,
+                password="",  # 소셜 로그인은 비밀번호 없음
+                name=kakao_name,
+                provider="kakao"
+            )
+            db.add(new_user)
+            db.commit()
+            db.refresh(new_user)
+            
+            # 기본 워크스페이스 생성 (order=1)
+            default_workspace = Workspace(
+                user_id=new_user.user_id,
+                name="기본 워크스페이스",
+                order=1
+            )
+            
+            db.add(default_workspace)
+            db.commit()
+            
+            # JWT 토큰 생성
+            token_data = {"sub": str(new_user.user_id), "email": new_user.email}
+            access_token = create_access_token(token_data)
+            refresh_token = create_refresh_token(token_data)
+            
             return {
-                "extra_info_required": True, 
-                "email": kakao_email,
-                "name": kakao_name
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer",
+                "user_id": new_user.user_id,
+                "email": new_user.email,
+                "name": new_user.name
             }
     
     except requests.RequestException:
@@ -84,65 +112,6 @@ def kakao_oauth(data: dict, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail="카카오 로그인 처리 중 오류가 발생했습니다.")
 
-@router.post("/kakao/register")
-def kakao_register(data: dict, db: Session = Depends(get_db)):
-    """카카오 회원가입"""
-    email = data.get("email")
-    name = data.get("name")
-    password = data.get("password")
-    password_confirm = data.get("password_confirm")
-    
-    if not all([email, name, password, password_confirm]):
-        raise HTTPException(status_code=400, detail="모든 필드를 입력해주세요.")
-    
-    if password != password_confirm:
-        raise HTTPException(status_code=400, detail="비밀번호가 일치하지 않습니다.")
-    
-    # 비밀번호 유효성 검사
-    if len(password) < 8 or not re.search(r"[A-Za-z]", password) or not re.search(r"[0-9]", password) or not re.search(r"[!@#$%^&*(),.?\":{}|<>\[\]\\/~`_\-+=;'']", password):
-        raise HTTPException(status_code=422, detail="비밀번호 요구사항이 지켜지지 않았습니다.")
-    
-    # 이메일 중복 확인
-    if db.query(User).filter(User.email == email).first():
-        raise HTTPException(status_code=409, detail="이미 존재하는 이메일입니다.")
-    
-    # 비밀번호 해싱
-    hashed_pw = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    
-    # 새 사용자 생성
-    new_user = User(
-        email=email,
-        password=hashed_pw,
-        name=name,
-        provider="kakao"
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
-    # 기본 워크스페이스 생성 (order=1)
-    default_workspace = Workspace(
-        user_id=new_user.user_id,
-        name="기본 워크스페이스",
-        order=1
-    )
-    
-    db.add(default_workspace)
-    db.commit()
-    
-    # JWT 토큰 생성
-    token_data = {"sub": str(new_user.user_id), "email": new_user.email}
-    access_token = create_access_token(token_data)
-    refresh_token = create_refresh_token(token_data)
-    
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "user_id": new_user.user_id,
-        "email": new_user.email,
-        "name": new_user.name
-    }
 
 @router.post("/naver")
 def naver_oauth(data: dict, db: Session = Depends(get_db)):
@@ -207,11 +176,39 @@ def naver_oauth(data: dict, db: Session = Depends(get_db)):
                 "name": user.name
             }
         else:
-            # 신규 회원: 추가 정보 필요
+            # 신규 회원: 바로 가입 처리
+            new_user = User(
+                email=naver_email,
+                password="",  # 소셜 로그인은 비밀번호 없음
+                name=naver_name,
+                provider="naver"
+            )
+            db.add(new_user)
+            db.commit()
+            db.refresh(new_user)
+            
+            # 기본 워크스페이스 생성 (order=1)
+            default_workspace = Workspace(
+                user_id=new_user.user_id,
+                name="기본 워크스페이스",
+                order=1
+            )
+            
+            db.add(default_workspace)
+            db.commit()
+            
+            # JWT 토큰 생성
+            token_data = {"sub": str(new_user.user_id), "email": new_user.email}
+            access_token = create_access_token(token_data)
+            refresh_token = create_refresh_token(token_data)
+            
             return {
-                "extra_info_required": True, 
-                "email": naver_email, 
-                "name": naver_name
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer",
+                "user_id": new_user.user_id,
+                "email": new_user.email,
+                "name": new_user.name
             }
     
     except requests.RequestException:
@@ -292,62 +289,3 @@ def google_oauth(data: dict, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail="구글 로그인 처리 중 오류가 발생했습니다.")
 
-@router.post("/google/register")
-def google_register(data: dict, db: Session = Depends(get_db)):
-    """구글 회원가입"""
-    email = data.get("email")
-    name = data.get("name")
-    password = data.get("password")
-    password_confirm = data.get("password_confirm")
-
-    if not all([email, name, password, password_confirm]):
-        raise HTTPException(status_code=400, detail="모든 필드를 입력해주세요.")
-    
-    if password != password_confirm:
-        raise HTTPException(status_code=400, detail="비밀번호가 일치하지 않습니다.")
-
-    # 비밀번호 유효성 검사
-    if len(password) < 8 or not re.search(r"[A-Za-z]", password) or not re.search(r"[0-9]", password) or not re.search(r"[!@#$%^&*(),.?\":{}|<>\[\]\\/~`_\-+=;'']", password):
-        raise HTTPException(status_code=422, detail="비밀번호 요구사항이 지켜지지 않았습니다.")
-
-    # 이메일 중복 확인
-    if db.query(User).filter(User.email == email).first():
-        raise HTTPException(status_code=409, detail="이미 존재하는 이메일입니다.")
-
-    # 비밀번호 해싱
-    hashed_pw = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-    # 새 사용자 생성
-    new_user = User(
-        email=email,
-        password=hashed_pw,
-        name=name,
-        provider="google"
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
-    # 기본 워크스페이스 생성 (order=1)
-    default_workspace = Workspace(
-        user_id=new_user.user_id,
-        name="기본 워크스페이스",
-        order=1
-    )
-    
-    db.add(default_workspace)
-    db.commit()
-
-    # JWT 토큰 생성
-    token_data = {"sub": str(new_user.user_id), "email": new_user.email}
-    access_token = create_access_token(token_data)
-    refresh_token = create_refresh_token(token_data)
-
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "user_id": new_user.user_id,
-        "email": new_user.email,
-        "name": new_user.name
-    } 

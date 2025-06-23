@@ -4,6 +4,8 @@ from backend.models.workspace import Workspace
 from backend.models.user import User
 from backend.database.base import get_db
 from backend.middleware.auth import verify_token
+from backend.routers.notifications import create_notification
+from backend.websocket.events import event_emitter
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
@@ -25,7 +27,7 @@ class WorkspaceUpdate(BaseModel):
     order: Optional[int] = None
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
-def create_workspace(
+async def create_workspace(
     data: WorkspaceCreate, 
     db: Session = Depends(get_db), 
     current_user: User = Depends(verify_token)
@@ -62,6 +64,21 @@ def create_workspace(
     db.add(new_workspace)
     db.commit()
     db.refresh(new_workspace)
+    
+    # 워크스페이스 생성 알림 생성
+    try:
+        await create_notification(
+            db=db,
+            user_id=current_user.user_id,
+            type="workspace_created",
+            message=f"새로운 워크스페이스 '{new_workspace.name}'이 생성되었습니다.",
+            channel="workspace",
+            related_id=new_workspace.workspace_id,
+            title="워크스페이스 생성",
+            emit_realtime=True
+        )
+    except Exception as e:
+        print(f"워크스페이스 생성 알림 생성 실패: {e}")
     
     return {
         "workspace_id": new_workspace.workspace_id,
@@ -136,7 +153,7 @@ def get_workspace(
     }
 
 @router.put("/{workspace_id}")
-def update_workspace(
+async def update_workspace(
     workspace_id: int,
     data: WorkspaceUpdate,
     db: Session = Depends(get_db),
@@ -177,6 +194,21 @@ def update_workspace(
     
     db.commit()
     db.refresh(workspace)
+    
+    # 워크스페이스 업데이트 알림 생성
+    try:
+        await create_notification(
+            db=db,
+            user_id=current_user.user_id,
+            type="workspace_updated",
+            message=f"워크스페이스 '{workspace.name}'이 업데이트되었습니다.",
+            channel="workspace",
+            related_id=workspace.workspace_id,
+            title="워크스페이스 업데이트",
+            emit_realtime=True
+        )
+    except Exception as e:
+        print(f"워크스페이스 업데이트 알림 생성 실패: {e}")
     
     return {
         "workspace_id": workspace.workspace_id,
@@ -255,7 +287,7 @@ def update_workspace_order(
         )
 
 @router.delete("/{workspace_id}")
-def delete_workspace(
+async def delete_workspace(
     workspace_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(verify_token)
@@ -284,7 +316,26 @@ def delete_workspace(
             detail=f"워크스페이스에 {projects_in_workspace}개의 프로젝트가 있습니다. 모든 프로젝트를 삭제하거나 다른 워크스페이스로 이동한 후 삭제해주세요."
         )
     
+    # 삭제 전에 워크스페이스 정보 저장 (알림용)
+    workspace_name = workspace.name
+    workspace_id_for_notification = workspace.workspace_id
+    
     db.delete(workspace)
     db.commit()
+    
+    # 워크스페이스 삭제 알림 생성
+    try:
+        await create_notification(
+            db=db,
+            user_id=current_user.user_id,
+            type="workspace_deleted",
+            message=f"워크스페이스 '{workspace_name}'이 삭제되었습니다.",
+            channel="workspace",
+            related_id=workspace_id_for_notification,
+            title="워크스페이스 삭제",
+            emit_realtime=True
+        )
+    except Exception as e:
+        print(f"워크스페이스 삭제 알림 생성 실패: {e}")
     
     return {"message": "워크스페이스가 성공적으로 삭제되었습니다."}

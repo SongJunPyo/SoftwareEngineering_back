@@ -106,7 +106,7 @@ class TaskEventData(BaseModel):
     created_by: Optional[int] = None
     created_by_name: Optional[str] = None
     description: Optional[str] = None
-    due_date: Optional[datetime] = None
+    due_date: Optional[str] = None
     priority: Optional[str] = None
     tags: Optional[List[str]] = []
 

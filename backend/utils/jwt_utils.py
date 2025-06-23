@@ -47,4 +47,17 @@ def refresh_access_token(refresh_token: str) -> str:
         }
         return create_access_token(new_payload)
     except jwt.InvalidTokenError as e:
-        raise e 
+        raise e
+
+def decode_token(token: str) -> dict:
+    """토큰 디코딩 (WebSocket용 - verify_token과 동일하지만 예외 처리 다름)"""
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        
+        # 토큰 만료 확인
+        if datetime.fromtimestamp(payload['exp']) < datetime.utcnow():
+            return None
+        
+        return payload
+    except jwt.InvalidTokenError:
+        return None 

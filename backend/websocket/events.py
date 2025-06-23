@@ -37,6 +37,9 @@ class WebSocketEventEmitter:
         tags: Optional[List[str]] = None
     ):
         """Task 생성 이벤트 발행"""
+        print(f"🌐 WebSocket 이벤트 발행 시작 - emit_task_created")
+        print(f"📊 Task 데이터: ID={task_id}, Project={project_id}, 담당자={assignee_id}")
+        
         task_data = TaskEventData(
             task_id=task_id,
             project_id=project_id,
@@ -52,15 +55,27 @@ class WebSocketEventEmitter:
         )
         
         project_room = get_project_room_id(project_id)
+        print(f"📡 프로젝트 룸: {project_room}")
         message = create_task_message(MessageType.TASK_CREATED, task_data, project_room, created_by)
         
-        await self.manager.broadcast_to_room(project_room, message.to_dict())
+        print(f"📤 프로젝트 룸으로 브로드캐스트 중...")
+        try:
+            await self.manager.broadcast_to_room(project_room, message.to_dict())
+            print(f"✅ 프로젝트 룸 브로드캐스트 완료")
+        except Exception as e:
+            logger.warning(f"Failed to broadcast task created to project {project_id}: {e}")
+            print(f"❌ 프로젝트 룸 브로드캐스트 실패: {e}")
         
         # 할당된 사용자가 있으면 개인 알림도 전송
         if assignee_id and assignee_id != created_by:
             user_room = get_user_room_id(assignee_id)
+            print(f"👤 개인 룸: {user_room}")
             personal_message = create_task_message(MessageType.TASK_ASSIGNED, task_data, user_room, assignee_id)
+            print(f"📤 개인 메시지 전송 중...")
             await self.manager.send_personal_message(personal_message.to_dict(), assignee_id)
+            print(f"✅ 개인 메시지 전송 완료")
+        else:
+            print(f"⏭️ 개인 알림 생략 (동일 사용자)")
     
     async def emit_task_updated(
         self,
@@ -328,9 +343,13 @@ class WebSocketEventEmitter:
         
         # 사용자가 속한 모든 프로젝트에 알림
         for project_id in project_ids:
-            project_room = get_project_room_id(project_id)
-            message = create_user_status_message(MessageType.USER_ONLINE, status_data, project_room)
-            await self.manager.broadcast_to_room(project_room, message.to_dict(), exclude_user=user_id)
+            try:
+                project_room = get_project_room_id(project_id)
+                message = create_user_status_message(MessageType.USER_ONLINE, status_data, project_room)
+                await self.manager.broadcast_to_room(project_room, message.to_dict(), exclude_user=user_id)
+            except Exception as e:
+                logger.warning(f"Failed to broadcast online status to project {project_id} for user {user_id}: {e}")
+                continue
     
     async def emit_user_offline(self, user_id: int, username: str, project_ids: List[int]):
         """사용자 오프라인 상태 이벤트 발행"""
@@ -342,9 +361,13 @@ class WebSocketEventEmitter:
         
         # 사용자가 속한 모든 프로젝트에 알림
         for project_id in project_ids:
-            project_room = get_project_room_id(project_id)
-            message = create_user_status_message(MessageType.USER_OFFLINE, status_data, project_room)
-            await self.manager.broadcast_to_room(project_room, message.to_dict(), exclude_user=user_id)
+            try:
+                project_room = get_project_room_id(project_id)
+                message = create_user_status_message(MessageType.USER_OFFLINE, status_data, project_room)
+                await self.manager.broadcast_to_room(project_room, message.to_dict(), exclude_user=user_id)
+            except Exception as e:
+                logger.warning(f"Failed to broadcast offline status to project {project_id} for user {user_id}: {e}")
+                continue
     
     async def emit_user_typing(self, user_id: int, username: str, project_id: int):
         """사용자 타이핑 상태 이벤트 발행"""

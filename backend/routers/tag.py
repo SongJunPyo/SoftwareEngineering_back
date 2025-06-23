@@ -9,6 +9,7 @@ from backend.models.tag import TaskTag
 from backend.models.project import Project, ProjectMember
 from backend.models.task import Task as TaskModel
 from backend.schemas.Tag import TagCreateRequest, TagUpdateRequest, TagResponse
+from backend.utils.activity_logger import log_tag_activity
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/tags", tags=["tags"])
 
@@ -53,6 +54,20 @@ def create_project_tag(
     db.add(tag)
     db.commit()
     db.refresh(tag)
+    
+    # Activity Log 작성
+    try:
+        log_tag_activity(
+            db=db,
+            user=current_user,
+            tag_name=tag_request.tag_name,
+            action="create",
+            project_id=project_id
+        )
+        db.commit()
+    except Exception as e:
+        print(f"태그 생성 로그 작성 실패: {e}")
+    
     return tag
 
 @router.put("/{tag_name}", response_model=TagResponse)
@@ -110,6 +125,19 @@ def delete_project_tag(
     tag = db.query(Tag).filter(Tag.tag_name == tag_name, Tag.project_id == project_id).first()
     if not tag:
         raise HTTPException(status_code=404, detail="태그를 찾을 수 없습니다.")
+    
+    # Activity Log 작성 (삭제 전에)
+    try:
+        log_tag_activity(
+            db=db,
+            user=current_user,
+            tag_name=tag_name,
+            action="delete",
+            project_id=project_id
+        )
+        db.commit()
+    except Exception as e:
+        print(f"태그 삭제 로그 작성 실패: {e}")
     
     # TaskTag 테이블에서 연관된 항목 먼저 삭제
     db.query(TaskTag).filter(

@@ -6,6 +6,9 @@ from backend.models.workspace_project_order import WorkspaceProjectOrder
 from backend.models.user import User
 from backend.database.base import get_db
 from backend.middleware.auth import verify_token
+from backend.routers.notifications import create_project_notification
+from backend.websocket.events import event_emitter
+from backend.utils.activity_logger import log_project_activity
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 
@@ -90,6 +93,18 @@ def create_project(
             project_order=project_count
         )
         db.add(wpo)
+        
+        # Activity Log 작성
+        try:
+            log_project_activity(
+                db=db,
+                user=current_user,
+                project_id=new_project.project_id,
+                action="create",
+                project_name=title
+            )
+        except Exception as e:
+            print(f"프로젝트 생성 로그 작성 실패: {e}")
         
         # 모든 변경사항 커밋
         db.commit()
@@ -252,7 +267,7 @@ def get_project(
     }
 
 @router.put("/{project_id}")
-def update_project(
+async def update_project(
     project_id: int,
     data: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
@@ -294,8 +309,59 @@ def update_project(
     # updated_at 갱신
     project.updated_at = datetime.now(timezone.utc)
     
+    # Activity Log 작성
+    try:
+        log_project_activity(
+            db=db,
+            user=current_user,
+            project_id=project.project_id,
+            action="update",
+            project_name=project.title
+        )
+    except Exception as e:
+        print(f"프로젝트 수정 로그 작성 실패: {e}")
+    
     db.commit()
     db.refresh(project)
+    
+    # 프로젝트 멤버들에게 업데이트 알림 생성
+    try:
+        # 현재 사용자 정보 가져오기
+        actor_user = db.query(User).filter(User.user_id == current_user.user_id).first()
+        actor_name = actor_user.name if actor_user else "Unknown"
+        
+        # 프로젝트의 모든 멤버들에게 알림 전송
+        project_members = db.query(ProjectMember).filter(
+            ProjectMember.project_id == project_id
+        ).all()
+        
+        for member in project_members:
+            # 업데이트한 사용자 본인에게는 알림 전송하지 않음
+            if member.user_id != current_user.user_id:
+                await create_project_notification(
+                    db=db,
+                    user_id=member.user_id,
+                    project_id=project_id,
+                    project_name=project.title,
+                    notification_type="project_updated",
+                    actor_name=actor_name
+                )
+        
+        # WebSocket 이벤트 발행 (프로젝트 업데이트)
+        from backend.websocket.events import event_emitter
+        # Note: 기존 emit_project_updated 메서드가 없다면 일반 알림으로 발행
+        await event_emitter.emit_notification(
+            notification_id=0,  # 임시값
+            recipient_id=0,  # 브로드캐스트용
+            title="프로젝트 업데이트",
+            message=f"'{project.title}' 프로젝트가 업데이트되었습니다.",
+            notification_type="project_updated",
+            related_id=project_id
+        )
+        
+    except Exception as e:
+        print(f"프로젝트 업데이트 알림 생성 실패: {str(e)}")
+        # 알림 실패는 전체 업데이트를 막지 않음
     
     # 프로젝트가 속한 워크스페이스 조회
     wpo = db.query(WorkspaceProjectOrder).filter(
@@ -313,7 +379,7 @@ def update_project(
     }
 
 @router.delete("/{project_id}")
-def delete_project(
+async def delete_project(
     project_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(verify_token)
@@ -335,6 +401,19 @@ def delete_project(
                 detail="프로젝트 소유자만 삭제할 수 있습니다."
             )
         
+        # Activity Log 작성 (삭제 전에)
+        try:
+            log_project_activity(
+                db=db,
+                user=current_user,
+                project_id=project.project_id,
+                action="delete",
+                project_name=project.title
+            )
+            db.commit()  # 로그를 먼저 커밋
+        except Exception as e:
+            print(f"프로젝트 삭제 로그 작성 실패: {e}")
+        
         # 1. 프로젝트 멤버 삭제 (외래키 제약 조건 때문에 먼저 삭제)
         db.query(ProjectMember).filter(ProjectMember.project_id == project_id).delete()
         
@@ -344,6 +423,43 @@ def delete_project(
         # 3. 프로젝트 초대 삭제 (있는 경우)
         from backend.models.project_invitation import ProjectInvitation
         db.query(ProjectInvitation).filter(ProjectInvitation.project_id == project_id).delete()
+        
+        # 프로젝트 삭제 전 멤버들에게 알림 전송
+        try:
+            # 현재 사용자 정보 가져오기
+            actor_user = db.query(User).filter(User.user_id == current_user.user_id).first()
+            actor_name = actor_user.name if actor_user else "Unknown"
+            
+            # 프로젝트의 모든 멤버들에게 삭제 알림 전송
+            project_members = db.query(ProjectMember).filter(
+                ProjectMember.project_id == project_id
+            ).all()
+            
+            for member in project_members:
+                # 삭제한 사용자 본인에게는 알림 전송하지 않음
+                if member.user_id != current_user.user_id:
+                    await create_project_notification(
+                        db=db,
+                        user_id=member.user_id,
+                        project_id=project_id,
+                        project_name=project.title,
+                        notification_type="project_deleted",
+                        actor_name=actor_name
+                    )
+            
+            # WebSocket 이벤트 발행 (프로젝트 삭제)
+            await event_emitter.emit_notification(
+                notification_id=0,  # 임시값
+                recipient_id=0,  # 브로드캐스트용
+                title="프로젝트 삭제",
+                message=f"'{project.title}' 프로젝트가 삭제되었습니다.",
+                notification_type="project_deleted",
+                related_id=project_id
+            )
+            
+        except Exception as e:
+            print(f"프로젝트 삭제 알림 생성 실패: {str(e)}")
+            # 알림 실패는 전체 삭제를 막지 않음
         
         # 4. 프로젝트 삭제
         db.delete(project)

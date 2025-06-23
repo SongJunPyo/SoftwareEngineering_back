@@ -88,17 +88,29 @@ class ConnectionManager:
     
     async def send_personal_message(self, message: dict, user_id: int):
         """특정 사용자에게 메시지 전송"""
+        print(f"🎯 개인 메시지 전송 시도 - 사용자: {user_id}")
+        print(f"📝 메시지 타입: {message.get('type', 'unknown')}")
+        
         if user_id not in self.active_connections:
+            print(f"❌ 사용자 {user_id}가 연결되어 있지 않음")
             logger.warning(f"User {user_id} not connected")
             return False
         
+        connections_count = len(self.active_connections[user_id])
+        print(f"🔗 활성 연결 개수: {connections_count}")
+        
         message_str = json.dumps(message, ensure_ascii=False)
         disconnected_connections = []
+        sent_successfully = 0
         
-        for connection in self.active_connections[user_id]:
+        for i, connection in enumerate(self.active_connections[user_id]):
             try:
+                print(f"📤 연결 #{i+1}에 메시지 전송 중...")
                 await connection.send_text(message_str)
+                sent_successfully += 1
+                print(f"✅ 연결 #{i+1} 전송 성공")
             except Exception as e:
+                print(f"❌ 연결 #{i+1} 전송 실패: {e}")
                 logger.warning(f"Failed to send message to user {user_id}: {e}")
                 disconnected_connections.append(connection)
         
@@ -106,31 +118,59 @@ class ConnectionManager:
         for connection in disconnected_connections:
             await self.disconnect(connection)
         
-        return len(disconnected_connections) == 0
+        success = len(disconnected_connections) == 0
+        print(f"📊 전송 결과: {sent_successfully}/{connections_count} 성공, 상태: {'성공' if success else '실패'}")
+        
+        return success
     
     async def broadcast_to_room(self, room_id: str, message: dict, exclude_user: Optional[int] = None):
         """룸의 모든 사용자에게 메시지 브로드캐스트"""
-        if room_id not in self.rooms:
+        print(f"📡 룸 브로드캐스트 시작 - 룸: {room_id}")
+        print(f"📝 메시지 타입: {message.get('type', 'unknown')}")
+        
+        # 룸 존재 여부 확인 및 안전한 멤버 획득
+        room_members = self.rooms.get(room_id)
+        if room_members is None:
+            print(f"❌ 룸 {room_id}이 존재하지 않음")
             logger.warning(f"Room {room_id} not found")
-            return
+            return 0
+        
+        # 룸 멤버가 비어있는지 확인
+        if not room_members:
+            print(f"❌ 룸 {room_id}에 멤버가 없음")
+            logger.warning(f"Room {room_id} has no members")
+            return 0
+        
+        # 멤버 리스트를 복사하여 순회 중 변경에 대비
+        members_list = list(room_members)
+        print(f"👥 룸 멤버 수: {len(members_list)}, 멤버: {members_list}")
+        
+        if exclude_user:
+            print(f"🚫 제외할 사용자: {exclude_user}")
         
         message["room_id"] = room_id
         sent_count = 0
         failed_users = []
         
-        for user_id in self.rooms[room_id]:
+        for user_id in members_list:
             if exclude_user and user_id == exclude_user:
+                print(f"⏭️ 사용자 {user_id} 제외")
                 continue
             
+            print(f"👤 사용자 {user_id}에게 메시지 전송 중...")
             success = await self.send_personal_message(message, user_id)
             if success:
                 sent_count += 1
+                print(f"✅ 사용자 {user_id} 전송 성공")
             else:
                 failed_users.append(user_id)
+                print(f"❌ 사용자 {user_id} 전송 실패")
         
         if failed_users:
+            print(f"🔴 전송 실패한 사용자들: {failed_users}")
             logger.warning(f"Failed to send message to users: {failed_users} in room {room_id}")
         
+        print(f"📊 브로드캐스트 완료 - {sent_count}/{len(members_list)} 사용자에게 전송 성공")
         logger.info(f"Broadcast to room {room_id}: {sent_count} users reached")
         return sent_count
     
@@ -151,34 +191,50 @@ class ConnectionManager:
     
     async def leave_room(self, user_id: int, room_id: str):
         """사용자를 룸에서 제거"""
-        if room_id in self.rooms:
-            self.rooms[room_id].discard(user_id)
-            if not self.rooms[room_id]:  # 빈 룸 정리
-                del self.rooms[room_id]
-        
-        if user_id in self.user_rooms:
-            self.user_rooms[user_id].discard(room_id)
-            if not self.user_rooms[user_id]:
-                del self.user_rooms[user_id]
-        
-        logger.info(f"User {user_id} left room {room_id}")
-        
-        # 룸 나감 확인 메시지
-        await self.send_personal_message({
-            "type": "room_left",
-            "room_id": room_id,
-            "message": f"룸 {room_id}에서 나갔습니다.",
-            "timestamp": datetime.utcnow().isoformat()
-        }, user_id)
+        try:
+            # 룸에서 사용자 제거
+            if room_id in self.rooms:
+                self.rooms[room_id].discard(user_id)
+                if not self.rooms[room_id]:  # 빈 룸 정리
+                    del self.rooms[room_id]
+            
+            # 사용자의 룸 목록에서 제거
+            if user_id in self.user_rooms:
+                self.user_rooms[user_id].discard(room_id)
+                if not self.user_rooms[user_id]:
+                    del self.user_rooms[user_id]
+            
+            logger.info(f"User {user_id} left room {room_id}")
+            
+            # 룸 나감 확인 메시지 (사용자가 여전히 연결되어 있는 경우에만)
+            if self.is_user_online(user_id):
+                await self.send_personal_message({
+                    "type": "room_left",
+                    "room_id": room_id,
+                    "message": f"룸 {room_id}에서 나갔습니다.",
+                    "timestamp": datetime.utcnow().isoformat()
+                }, user_id)
+        except Exception as e:
+            logger.error(f"Error leaving room {room_id} for user {user_id}: {e}")
     
     async def _leave_all_rooms(self, user_id: int):
         """사용자를 모든 룸에서 제거"""
-        if user_id not in self.user_rooms:
-            return
-        
-        rooms_to_leave = list(self.user_rooms[user_id])
-        for room_id in rooms_to_leave:
-            await self.leave_room(user_id, room_id)
+        try:
+            if user_id not in self.user_rooms:
+                return
+            
+            # 룸 리스트를 복사하여 순회 중 변경에 대비
+            rooms_to_leave = list(self.user_rooms[user_id])
+            logger.info(f"User {user_id} leaving {len(rooms_to_leave)} rooms: {rooms_to_leave}")
+            
+            for room_id in rooms_to_leave:
+                try:
+                    await self.leave_room(user_id, room_id)
+                except Exception as e:
+                    logger.error(f"Error leaving room {room_id} for user {user_id}: {e}")
+                    continue
+        except Exception as e:
+            logger.error(f"Error leaving all rooms for user {user_id}: {e}")
     
     def get_room_members(self, room_id: str) -> List[int]:
         """룸의 멤버 목록 반환"""

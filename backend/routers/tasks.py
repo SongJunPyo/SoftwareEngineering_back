@@ -298,8 +298,13 @@ async def update_task_status(
         raise HTTPException(status_code=403, detail="상태를 변경할 권한이 없습니다.")
 
     new_status = status_update.get("status")
-    if new_status not in ['todo', 'In progress', 'complete']:
-        raise HTTPException(status_code=400, detail="유효하지 않은 상태 값입니다.")
+    # 프론트엔드 상태값을 지원하도록 업데이트
+    valid_frontend_statuses = ['todo', 'in_progress', 'pending', 'complete']
+    if new_status not in valid_frontend_statuses:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"유효하지 않은 상태 값입니다. 다음 중 하나여야 합니다: {', '.join(valid_frontend_statuses)}"
+        )
 
     task.status = new_status
     task.updated_at = datetime.utcnow()
